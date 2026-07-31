@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#4CAF50">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -11,93 +11,23 @@
   <link rel="icon" href="icon-192.png">
   <title>家庭记账本</title>
   <style>
-    /* 基础样式 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html { 
-      width: 100%; 
-      height: 100%; 
-      overflow-x: hidden; 
-      margin: 0; 
-      padding: 0;
-      -webkit-text-size-adjust: 100%;
-      text-size-adjust: 100%;
-    }
+    html { width: 100%; overflow-x: hidden; }
     body {
       width: 100%;
-      min-height: 100vh;
       margin: 0;
       padding: 0;
       overflow-x: hidden;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
       background: #f5f5f5;
       color: #333;
-    }
-    /* 缩放容器 - 用于动态修正PWA缩放 */
-    #app-wrapper {
-      width: 100%;
-      transform-origin: top left;
-      will-change: transform;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
     }
   </style>
   <link rel="stylesheet" href="style.css">
-  <script>
-    // 动态修复PWA缩放
-    (function() {
-      function fixScale() {
-        var wrapper = document.getElementById('app-wrapper');
-        if (!wrapper) return;
-        
-        // 获取实际屏幕宽度和窗口宽度
-        var screenWidth = window.screen.width;
-        var windowWidth = window.innerWidth;
-        var documentWidth = document.documentElement.clientWidth;
-        
-        // 计算缩放比例
-        var scale = 1;
-        
-        // 检查是否在PWA独立模式
-        var isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-                          window.navigator.standalone === true;
-        
-        if (isStandalone && windowWidth < screenWidth * 0.8) {
-          // PWA模式 - 可能需要放大
-          scale = screenWidth / windowWidth;
-          // 限制在合理范围
-          scale = Math.max(1, Math.min(scale, 2));
-        }
-        
-        // 应用缩放
-        wrapper.style.transform = 'scale(' + scale + ')';
-        wrapper.style.width = (100 / scale) + '%';
-        
-        // 调整body高度
-        document.body.style.minHeight = (window.innerHeight / scale) + 'px';
-      }
-      
-      // DOM就绪后执行
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', fixScale);
-      } else {
-        fixScale();
-      }
-      
-      // 多次延迟执行确保生效
-      setTimeout(fixScale, 100);
-      setTimeout(fixScale, 300);
-      setTimeout(fixScale, 500);
-      setTimeout(fixScale, 1000);
-      
-      // 监听窗口变化
-      window.addEventListener('resize', fixScale);
-      window.addEventListener('orientationchange', fixScale);
-      
-      // 页面完全加载后再执行
-      window.addEventListener('load', fixScale);
-    })();
-  </script>
 </head>
 <body>
-  <div id="app-wrapper">
   <header class="app-header">
     <h1>家庭记账本</h1>
     <p class="subtitle">记录每一笔开销</p>
@@ -200,7 +130,7 @@
     <div class="page" id="settings-page">
       <div class="settings-section">
         <h3>分类管理</h3>
-        <div class="settings-item" onclick="window.location.href='#'" id="manage-categories">
+        <div class="settings-item" onclick="openModal()">
           <div class="settings-info">
             <span class="settings-title">管理大类和小类</span>
             <span class="settings-desc">添加、编辑、删除大类和小类</span>
@@ -325,7 +255,6 @@
     </div>
   </div>
 
-  </div>
   <script src="db.js"></script>
   <script src="app.js"></script>
 </body>
