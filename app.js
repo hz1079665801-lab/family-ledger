@@ -36,12 +36,8 @@ let currentCategory = '';
 let editingId = null;
 
 function initApp() {
-  // 修复移动端缩放问题
-  fixMobileViewport();
-  
-  // 延迟二次检查，确保缩放正确
-  setTimeout(fixMobileViewport, 300);
-  setTimeout(fixMobileViewport, 1000);
+  // Edge浏览器缩放修复
+  fixEdgeScaling();
   
   registerServiceWorker();
   loadCategories();
@@ -57,31 +53,42 @@ function initApp() {
   }
 }
 
-function fixMobileViewport() {
-  // 检测是否为移动端
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+function fixEdgeScaling() {
+  const userAgent = navigator.userAgent;
+  const isEdge = /Edg|Edge/i.test(userAgent);
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
   
-  if (isMobile) {
-    // 清除可能存在的transform缩放
-    document.documentElement.style.transform = '';
-    document.documentElement.style.transformOrigin = '';
-    
-    // 强制重置viewport
-    const viewportMeta = document.querySelector('meta[name="viewport"]');
+  if (isEdge && isMobile) {
+    // Edge移动端特殊处理
     const screenWidth = window.screen.width;
-    const viewportWidth = document.documentElement.clientWidth;
+    const viewportWidth = window.innerWidth;
     
-    // 如果视口宽度异常小，修正viewport
-    if (viewportWidth < screenWidth * 0.85 || viewportWidth > screenWidth * 1.2) {
-      const scale = (screenWidth / viewportWidth).toFixed(3);
-      if (scale > 0.5 && scale < 3) {
-        viewportMeta.setAttribute('content', 
-          `width=device-width, initial-scale=${scale}, maximum-scale=${scale}, user-scalable=no`);
-        // 重置zoom
-        setTimeout(() => {
-          document.documentElement.style.transform = '';
-        }, 100);
-      }
+    // 计算缩放比例
+    const scale = screenWidth / viewportWidth;
+    
+    if (Math.abs(scale - 1) > 0.1) {
+      // 需要修复缩放
+      const viewportMeta = document.querySelector('meta[name="viewport"]');
+      const newScale = scale.toFixed(2);
+      
+      viewportMeta.setAttribute('content', 
+        `width=device-width, initial-scale=${newScale}, maximum-scale=${newScale}, user-scalable=no`);
+      
+      // 延迟应用确保生效
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    }
+  } else if (isMobile) {
+    // 其他移动端浏览器
+    const viewportWidth = window.innerWidth;
+    const screenWidth = window.screen.width;
+    
+    if (viewportWidth < screenWidth * 0.85 || viewportWidth > screenWidth * 1.15) {
+      const scale = (screenWidth / viewportWidth).toFixed(2);
+      const viewportMeta = document.querySelector('meta[name="viewport"]');
+      viewportMeta.setAttribute('content', 
+        `width=device-width, initial-scale=${scale}, maximum-scale=${scale}, user-scalable=no`);
     }
   }
 }
@@ -364,7 +371,7 @@ function populateFilterOptions() {
     
     filterMember.addEventListener('change', () => {
       const member = filterMember.value;
-      filterCategory.innerHTML = '<option value="">全部小类</option>';
+      filterCategory.innerHTML = '<option value="">全部</option>';
       if (member && CATEGORIES[member]) {
         CATEGORIES[member].forEach(c => {
           const opt = document.createElement('option');
@@ -379,7 +386,7 @@ function populateFilterOptions() {
   
   // 更新分类选项
   const selectedMember = filterMember.value;
-  filterCategory.innerHTML = '<option value="">全部小类</option>';
+  filterCategory.innerHTML = '<option value="">全部</option>';
   if (selectedMember && CATEGORIES[selectedMember]) {
     CATEGORIES[selectedMember].forEach(c => {
       const opt = document.createElement('option');
@@ -465,14 +472,14 @@ function renderStats() {
     let html = `<div class="stats-total">总支出: <span>¥${total.toFixed(2)}</span></div>`;
     
     if (type === 'member') {
-      html += '<div class="stats-section"><h3>按大类（成员）</h3>';
+      html += '<div class="stats-section"><h3>按大类</h3>';
       Object.keys(byMember).sort().forEach(m => {
         const pct = total > 0 ? ((byMember[m] / total) * 100).toFixed(1) : 0;
         html += `<div class="stats-bar"><div class="stats-bar-label">${m}: ¥${byMember[m].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:var(--primary-color)"></div></div></div>`;
       });
       html += '</div>';
     } else {
-      html += '<div class="stats-section"><h3>按小类（分类）</h3>';
+      html += '<div class="stats-section"><h3>按小类</h3>';
       Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).forEach(c => {
         const pct = total > 0 ? ((byCategory[c] / total) * 100).toFixed(1) : 0;
         const color = CATEGORY_COLORS[c] || '#BDC3C7';
