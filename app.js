@@ -36,6 +36,13 @@ let currentCategory = '';
 let editingId = null;
 
 function initApp() {
+  // 修复移动端缩放问题
+  fixMobileViewport();
+  
+  // 延迟二次检查，确保缩放正确
+  setTimeout(fixMobileViewport, 300);
+  setTimeout(fixMobileViewport, 1000);
+  
   registerServiceWorker();
   loadCategories();
   renderMemberGrid();
@@ -47,6 +54,35 @@ function initApp() {
     switchTab('add');
   } else {
     switchTab('home');
+  }
+}
+
+function fixMobileViewport() {
+  // 检测是否为移动端
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  if (isMobile) {
+    // 清除可能存在的transform缩放
+    document.documentElement.style.transform = '';
+    document.documentElement.style.transformOrigin = '';
+    
+    // 强制重置viewport
+    const viewportMeta = document.querySelector('meta[name="viewport"]');
+    const screenWidth = window.screen.width;
+    const viewportWidth = document.documentElement.clientWidth;
+    
+    // 如果视口宽度异常小，修正viewport
+    if (viewportWidth < screenWidth * 0.85 || viewportWidth > screenWidth * 1.2) {
+      const scale = (screenWidth / viewportWidth).toFixed(3);
+      if (scale > 0.5 && scale < 3) {
+        viewportMeta.setAttribute('content', 
+          `width=device-width, initial-scale=${scale}, maximum-scale=${scale}, user-scalable=no`);
+        // 重置zoom
+        setTimeout(() => {
+          document.documentElement.style.transform = '';
+        }, 100);
+      }
+    }
   }
 }
 
