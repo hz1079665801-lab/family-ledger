@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ledger-v1';
+const CACHE_NAME = 'ledger-v2';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ self.addEventListener('install', (event) => {
       return cache.addAll(CORE_ASSETS);
     })
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -24,6 +25,7 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
