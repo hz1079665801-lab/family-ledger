@@ -2,8 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <!-- Edge浏览器兼容的viewport设置 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" id="viewport-meta" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#4CAF50">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -12,14 +11,25 @@
   <link rel="icon" href="icon-192.png">
   <title>家庭记账本</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    /* Edge浏览器缩放修复 - 强制重置transform */
-    @supports (-ms-ime-align: auto) {
-      html, body {
-        -ms-overflow-style: none;
+  <script>
+    // Edge浏览器缩放修复 - 在页面加载前检测
+    (function() {
+      var ua = navigator.userAgent;
+      var isEdge = /Edg|Edge/i.test(ua);
+      var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+      
+      if (isEdge && isMobile) {
+        var screenW = window.screen.width;
+        var viewportW = window.innerWidth;
+        
+        // 直接设置正确的viewport
+        var vp = document.getElementById('viewport-meta');
+        if (vp && viewportW > 0 && screenW > viewportW * 1.05) {
+          vp.setAttribute('content', 'width=' + screenW + ', initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
       }
-    }
-  </style>
+    })();
+  </script>
 </head>
 <body>
   <header class="app-header">

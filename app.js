@@ -36,8 +36,8 @@ let currentCategory = '';
 let editingId = null;
 
 function initApp() {
-  // Edge浏览器缩放修复
-  fixEdgeScaling();
+  // 强制修复Edge浏览器缩放
+  forceEdgeFix();
   
   registerServiceWorker();
   loadCategories();
@@ -53,44 +53,44 @@ function initApp() {
   }
 }
 
-function fixEdgeScaling() {
-  const userAgent = navigator.userAgent;
-  const isEdge = /Edg|Edge/i.test(userAgent);
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+function forceEdgeFix() {
+  const ua = navigator.userAgent;
+  const isEdgeMobile = /Edg|Edge/i.test(ua) && /Android|webOS|iPhone|iPad|iPod/i.test(ua);
   
-  if (isEdge && isMobile) {
-    // Edge移动端特殊处理
-    const screenWidth = window.screen.width;
-    const viewportWidth = window.innerWidth;
+  if (!isEdgeMobile) return;
+  
+  // 延迟检测，确保viewport已经应用
+  setTimeout(() => {
+    const screenW = window.screen.width;
+    const viewportW = window.innerWidth;
     
-    // 计算缩放比例
-    const scale = screenWidth / viewportWidth;
+    console.log(`[Edge修复] screen=${screenW}, viewport=${viewportW}`);
     
-    if (Math.abs(scale - 1) > 0.1) {
-      // 需要修复缩放
-      const viewportMeta = document.querySelector('meta[name="viewport"]');
-      const newScale = scale.toFixed(2);
+    // 如果viewport明显小于屏幕宽度
+    if (viewportW > 0 && screenW > viewportW * 1.05) {
+      const scale = screenW / viewportW;
       
-      viewportMeta.setAttribute('content', 
-        `width=device-width, initial-scale=${newScale}, maximum-scale=${newScale}, user-scalable=no`);
+      console.log(`[Edge修复] scale=${scale.toFixed(3)}`);
       
-      // 延迟应用确保生效
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      // 方案：用transform放大整个body
+      const body = document.body;
+      
+      // 保存原始样式
+      const origWidth = body.style.width;
+      const origTransform = body.style.transform;
+      
+      // 设置body为屏幕宽度
+      body.style.width = screenW + 'px';
+      body.style.transformOrigin = 'top left';
+      body.style.transform = `scale(${1/scale})`;
+      
+      // 调整高度
+      const scrollH = document.documentElement.scrollHeight;
+      document.documentElement.style.minHeight = (scrollH / scale) + 'px';
+      
+      console.log('[Edge修复] 应用transform缩放完成');
     }
-  } else if (isMobile) {
-    // 其他移动端浏览器
-    const viewportWidth = window.innerWidth;
-    const screenWidth = window.screen.width;
-    
-    if (viewportWidth < screenWidth * 0.85 || viewportWidth > screenWidth * 1.15) {
-      const scale = (screenWidth / viewportWidth).toFixed(2);
-      const viewportMeta = document.querySelector('meta[name="viewport"]');
-      viewportMeta.setAttribute('content', 
-        `width=device-width, initial-scale=${scale}, maximum-scale=${scale}, user-scalable=no`);
-    }
-  }
+  }, 100);
 }
 
 function loadCategories() {
