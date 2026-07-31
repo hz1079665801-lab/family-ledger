@@ -32,20 +32,21 @@ const PRESET_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#
 
 let currentTab = 'home';
 let currentMember = '我';
+let currentCategory = '';
 let editingId = null;
 
 function initApp() {
   registerServiceWorker();
   loadCategories();
+  renderMemberGrid();
   setupEventListeners();
   
-  // 检查URL参数，支持快捷方式
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');
   if (tab === 'add') {
     switchTab('add');
   } else {
-    renderHome();
+    switchTab('home');
   }
 }
 
@@ -53,14 +54,10 @@ function loadCategories() {
   const savedCategories = localStorage.getItem('categories');
   const savedColors = localStorage.getItem('categoryColors');
   if (savedCategories) {
-    try {
-      CATEGORIES = JSON.parse(savedCategories);
-    } catch (e) {}
+    try { CATEGORIES = JSON.parse(savedCategories); } catch (e) {}
   }
   if (savedColors) {
-    try {
-      CATEGORY_COLORS = JSON.parse(savedColors);
-    } catch (e) {}
+    try { CATEGORY_COLORS = JSON.parse(savedColors); } catch (e) {}
   }
 }
 
@@ -76,74 +73,98 @@ function registerServiceWorker() {
 }
 
 function setupEventListeners() {
-  document.getElementById('nav-home').addEventListener('click', () => switchTab('home'));
-  document.getElementById('nav-add').addEventListener('click', () => switchTab('add'));
-  document.getElementById('nav-stats').addEventListener('click', () => switchTab('stats'));
-  document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
-
-  document.querySelectorAll('.member-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      currentMember = btn.dataset.member;
-      document.querySelectorAll('.member-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderCategories();
+  // 保存按钮
+  document.getElementById('btn-save').addEventListener('click', handleSave);
+  
+  // 导入文件
+  const importInput = document.getElementById('import-input');
+  if (importInput) {
+    importInput.addEventListener('change', handleImport);
+  }
+  
+  // 列表页筛选
+  const filterMember = document.getElementById('filter-member');
+  const filterCategory = document.getElementById('filter-category');
+  if (filterMember) filterMember.addEventListener('change', renderAllRecords);
+  if (filterCategory) filterCategory.addEventListener('change', renderAllRecords);
+  
+  // 搜索
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', renderAllRecords);
+  }
+  
+  // 统计页标签
+  document.querySelectorAll('.stats-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.stats-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      renderStats();
     });
   });
-
-  document.getElementById('record-form').addEventListener('submit', handleSubmit);
-  document.getElementById('cancel-btn').addEventListener('click', cancelEdit);
-
-  const fileInput = document.getElementById('import-file');
-  if (fileInput) {
-    fileInput.addEventListener('change', handleImport);
-  }
 }
 
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.tab === tab);
+  
+  // 更新底部导航
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
   });
+  
+  // 切换页面
   document.querySelectorAll('.page').forEach(page => {
     page.classList.remove('active');
   });
-  document.getElementById(`page-${tab}`).classList.add('active');
-
+  const pageEl = document.getElementById(tab + '-page');
+  if (pageEl) pageEl.classList.add('active');
+  
+  // 渲染对应页面
   if (tab === 'home') renderHome();
-  if (tab === 'add') renderAddPage();
+  if (tab === 'add') { 
+    if (editingId === null) resetAddForm();
+    renderCategoryGrid();
+  }
+  if (tab === 'list') {
+    populateFilterOptions();
+    renderAllRecords();
+  }
   if (tab === 'stats') renderStats();
-  if (tab === 'settings') renderSettings();
+  if (tab === 'settings') setupSettingsPage();
 }
 
 function renderHome() {
-  const listContainer = document.getElementById('record-list');
-  if (!listContainer) return;
-
+  // 渲染汇总
   getAllRecords().then(records => {
     records.sort((a, b) => new Date(b.date) - new Date(a.date));
     
-    const summary = calculateSummary(records);
-    document.getElementById('total-amount').textContent = summary.total.toFixed(2);
-    document.getElementById('month-amount').textContent = summary.month.toFixed(2);
-
-    const grouped = groupByMonth(records);
-    listContainer.innerHTML = '';
-
-    Object.keys(grouped).sort().reverse().forEach(month => {
-      const [year, mon] = month.split('-');
-      const monthDiv = document.createElement('div');
-      monthDiv.className = 'month-group';
-      monthDiv.innerHTML = `<div class="month-header">${year}年${parseInt(mon)}月 (合计: ¥${grouped[month].reduce((s, r) => s + r.amount, 0).toFixed(2)})</div>`;
-      
-      grouped[month].forEach(record => {
-        monthDiv.appendChild(createRecordElement(record));
-      });
-      listContainer.appendChild(monthDiv);
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    let totalAmount = 0, monthAmount = 0;
+    records.forEach(r => {
+      totalAmount += r.amount;
+      if (r.date.startsWith(currentMonth)) monthAmount += r.amount;
     });
-
-    if (records.length === 0) {
-      listContainer.innerHTML = '<div class="empty-state">暂无记录，点击下方 + 开始记账</div>';
+    
+    document.getElementById('month-total').textContent = '¥' + monthAmount.toFixed(2);
+    document.getElementById('all-total').textContent = '¥' + totalAmount.toFixed(2);
+    
+    // 渲染最近记录
+    const recentContainer = document.getElementById('recent-records');
+    if (!recentContainer) return;
+    
+    const recent = records.slice(0, 5);
+    recentContainer.innerHTML = '';
+    
+    if (recent.length === 0) {
+      recentContainer.innerHTML = '<div class="empty-state">暂无记录，点击下方 + 开始记账</div>';
+      return;
     }
+    
+    recent.forEach(record => {
+      recentContainer.appendChild(createRecordElement(record));
+    });
   });
 }
 
@@ -170,275 +191,270 @@ function createRecordElement(record) {
     </div>
   `;
 
-  div.querySelector('.btn-edit').addEventListener('click', (e) => {
-    e.stopPropagation();
-    editRecord(record);
-  });
-  div.querySelector('.btn-delete').addEventListener('click', (e) => {
-    e.stopPropagation();
-    deleteRecordItem(record.id);
-  });
+  div.querySelector('.btn-edit').addEventListener('click', () => editRecord(record));
+  div.querySelector('.btn-delete').addEventListener('click', () => deleteRecordItem(record.id));
 
   return div;
 }
 
-function calculateSummary(records) {
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  let total = 0, month = 0;
-  records.forEach(r => {
-    total += r.amount;
-    if (r.date.startsWith(currentMonth)) month += r.amount;
-  });
-  return { total, month };
-}
-
-function groupByMonth(records) {
-  const groups = {};
-  records.forEach(r => {
-    const month = r.date.substring(0, 7);
-    if (!groups[month]) groups[month] = [];
-    groups[month].push(r);
-  });
-  return groups;
-}
-
-function renderAddPage() {
-  editingId = null;
-  document.getElementById('record-form').reset();
-  document.getElementById('form-title').textContent = '记一笔';
-  setDefaultDate();
-  renderCategories();
-}
-
-function setDefaultDate() {
+function resetAddForm() {
+  document.getElementById('amount-input').value = '';
+  document.getElementById('note-input').value = '';
   const today = new Date().toISOString().split('T')[0];
-  document.getElementById('record-date').value = today;
+  document.getElementById('date-input').value = today;
+  currentCategory = '';
+  renderCategoryGrid();
 }
 
-function renderCategories() {
-  const container = document.getElementById('category-list');
-  container.innerHTML = '';
-  const categories = CATEGORIES[currentMember] || [];
-  categories.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'category-btn';
-    btn.textContent = cat;
-    btn.dataset.category = cat;
+function renderMemberGrid() {
+  const grid = document.getElementById('member-grid');
+  if (!grid) return;
+  
+  const members = Object.keys(CATEGORIES);
+  grid.innerHTML = members.map(m => `
+    <button class="member-btn ${m === currentMember ? 'active' : ''}" data-member="${escapeHtml(m)}">${escapeHtml(m)}</button>
+  `).join('');
+  
+  grid.querySelectorAll('.member-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+      currentMember = btn.dataset.member;
+      grid.querySelectorAll('.member-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById('selected-category').value = cat;
+      renderCategoryGrid();
     });
-    container.appendChild(btn);
   });
-  if (categories.length > 0) {
-    document.getElementById('selected-category').value = categories[0];
-    const firstBtn = container.querySelector('.category-btn');
+  
+  renderCategoryGrid();
+}
+
+function renderCategoryGrid() {
+  const grid = document.getElementById('category-grid');
+  if (!grid) return;
+  
+  const categories = CATEGORIES[currentMember] || [];
+  grid.innerHTML = categories.map(c => `
+    <button class="category-btn ${c === currentCategory ? 'active' : ''}" data-category="${escapeHtml(c)}">${escapeHtml(c)}</button>
+  `).join('');
+  
+  grid.querySelectorAll('.category-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentCategory = btn.dataset.category;
+      grid.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+  
+  if (!currentCategory && categories.length > 0) {
+    currentCategory = categories[0];
+    const firstBtn = grid.querySelector('.category-btn');
     if (firstBtn) firstBtn.classList.add('active');
   }
 }
 
-function handleSubmit(e) {
-  e.preventDefault();
-  const record = {
-    member: currentMember,
-    category: document.getElementById('selected-category').value,
-    amount: parseFloat(document.getElementById('record-amount').value),
-    date: document.getElementById('record-date').value,
-    note: document.getElementById('record-note').value.trim()
-  };
-
-  if (!record.amount || record.amount <= 0) {
+function handleSave() {
+  const amount = parseFloat(document.getElementById('amount-input').value);
+  const date = document.getElementById('date-input').value;
+  const note = document.getElementById('note-input').value.trim();
+  
+  if (!amount || amount <= 0) {
     alert('请输入有效金额');
     return;
   }
-  if (!record.category) {
-    alert('请选择分类');
+  if (!currentCategory) {
+    alert('请选择小类');
     return;
   }
-
+  
+  const record = {
+    member: currentMember,
+    category: currentCategory,
+    amount: amount,
+    date: date,
+    note: note
+  };
+  
   const action = editingId ? updateRecord(editingId, record) : addRecord(record);
   action.then(() => {
+    editingId = null;
     switchTab('home');
   }).catch(err => alert('保存失败: ' + err.message));
 }
 
 function editRecord(record) {
-  switchTab('add');
   editingId = record.id;
-  document.getElementById('form-title').textContent = '编辑记录';
   currentMember = record.member;
-  document.querySelectorAll('.member-btn').forEach(b => {
+  currentCategory = record.category;
+  
+  switchTab('add');
+  
+  // 更新成员选择
+  const memberGrid = document.getElementById('member-grid');
+  memberGrid.querySelectorAll('.member-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.member === currentMember);
   });
-  document.getElementById('record-amount').value = record.amount;
-  document.getElementById('record-date').value = record.date;
-  document.getElementById('record-note').value = record.note || '';
-  renderCategories();
-  document.querySelectorAll('.category-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.category === record.category);
-  });
-  document.getElementById('selected-category').value = record.category;
-}
-
-function cancelEdit() {
-  editingId = null;
-  document.getElementById('record-form').reset();
-  document.getElementById('form-title').textContent = '记一笔';
-  setDefaultDate();
-  renderCategories();
+  
+  // 更新分类选择
+  renderCategoryGrid();
+  
+  // 填充表单
+  document.getElementById('amount-input').value = record.amount;
+  document.getElementById('date-input').value = record.date;
+  document.getElementById('note-input').value = record.note || '';
 }
 
 function deleteRecordItem(id) {
   if (!confirm('确定删除这条记录吗？')) return;
   deleteRecord(id).then(() => {
-    renderHome();
+    if (editingId === id) {
+      editingId = null;
+    }
+    switchTab('home');
   }).catch(err => alert('删除失败: ' + err.message));
+}
+
+function populateFilterOptions() {
+  const filterMember = document.getElementById('filter-member');
+  const filterCategory = document.getElementById('filter-category');
+  
+  if (!filterMember || !filterCategory) return;
+  
+  if (filterMember.options.length <= 1) {
+    Object.keys(CATEGORIES).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      filterMember.appendChild(opt);
+    });
+    
+    filterMember.addEventListener('change', () => {
+      const member = filterMember.value;
+      filterCategory.innerHTML = '<option value="">全部小类</option>';
+      if (member && CATEGORIES[member]) {
+        CATEGORIES[member].forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          filterCategory.appendChild(opt);
+        });
+      }
+      renderAllRecords();
+    });
+  }
+  
+  // 更新分类选项
+  const selectedMember = filterMember.value;
+  filterCategory.innerHTML = '<option value="">全部小类</option>';
+  if (selectedMember && CATEGORIES[selectedMember]) {
+    CATEGORIES[selectedMember].forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      filterCategory.appendChild(opt);
+    });
+  }
+}
+
+function renderAllRecords() {
+  const container = document.getElementById('all-records');
+  if (!container) return;
+  
+  const search = document.getElementById('search-input').value.toLowerCase();
+  const filterMember = document.getElementById('filter-member').value;
+  const filterCategory = document.getElementById('filter-category').value;
+  
+  getAllRecords().then(records => {
+    records.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    let filtered = records;
+    if (filterMember) filtered = filtered.filter(r => r.member === filterMember);
+    if (filterCategory) filtered = filtered.filter(r => r.category === filterCategory);
+    if (search) {
+      filtered = filtered.filter(r => 
+        r.member.toLowerCase().includes(search) ||
+        r.category.toLowerCase().includes(search) ||
+        (r.note && r.note.toLowerCase().includes(search))
+      );
+    }
+    
+    container.innerHTML = '';
+    
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="empty-state">没有找到匹配的记录</div>';
+      return;
+    }
+    
+    // 按月份分组
+    const groups = {};
+    filtered.forEach(r => {
+      const month = r.date.substring(0, 7);
+      if (!groups[month]) groups[month] = [];
+      groups[month].push(r);
+    });
+    
+    Object.keys(groups).sort().reverse().forEach(month => {
+      const [year, mon] = month.split('-');
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'month-group';
+      const groupTotal = groups[month].reduce((s, r) => s + r.amount, 0);
+      groupDiv.innerHTML = `<div class="month-header">${year}年${parseInt(mon)}月 (合计: ¥${groupTotal.toFixed(2)})</div>`;
+      
+      groups[month].forEach(record => {
+        groupDiv.appendChild(createRecordElement(record));
+      });
+      container.appendChild(groupDiv);
+    });
+  });
 }
 
 function renderStats() {
   const container = document.getElementById('stats-content');
-  const yearSelect = document.getElementById('stats-year');
-  const monthSelect = document.getElementById('stats-month');
-
+  if (!container) return;
+  
+  const activeTab = document.querySelector('.stats-tab.active');
+  const type = activeTab ? activeTab.dataset.type : 'member';
+  
   getAllRecords().then(records => {
-    populateYearMonthSelectors(records);
-    
-    const year = yearSelect.value;
-    const month = monthSelect.value;
-    const filtered = records.filter(r => {
-      const recordDate = new Date(r.date);
-      if (year !== 'all' && recordDate.getFullYear() !== parseInt(year)) return false;
-      if (month !== 'all' && recordDate.getMonth() + 1 !== parseInt(month)) return false;
-      return true;
-    });
-
     const byMember = {};
     const byCategory = {};
-    filtered.forEach(r => {
+    
+    records.forEach(r => {
       if (!byMember[r.member]) byMember[r.member] = 0;
       byMember[r.member] += r.amount;
       if (!byCategory[r.category]) byCategory[r.category] = 0;
       byCategory[r.category] += r.amount;
     });
-
-    const total = filtered.reduce((s, r) => s + r.amount, 0);
+    
+    const total = records.reduce((s, r) => s + r.amount, 0);
     
     let html = `<div class="stats-total">总支出: <span>¥${total.toFixed(2)}</span></div>`;
     
-    html += '<div class="stats-section"><h3>按成员</h3>';
-    Object.keys(byMember).sort().forEach(m => {
-      const pct = total > 0 ? ((byMember[m] / total) * 100).toFixed(1) : 0;
-      html += `<div class="stats-bar"><div class="stats-bar-label">${m}: ¥${byMember[m].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:var(--primary-color)"></div></div></div>`;
-    });
-    html += '</div>';
-
-    html += '<div class="stats-section"><h3>按分类</h3>';
-    Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).forEach(c => {
-      const pct = total > 0 ? ((byCategory[c] / total) * 100).toFixed(1) : 0;
-      const color = CATEGORY_COLORS[c] || '#BDC3C7';
-      html += `<div class="stats-bar"><div class="stats-bar-label"><span class="color-dot" style="background:${color}"></span>${c}: ¥${byCategory[c].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
-    });
-    html += '</div>';
-
+    if (type === 'member') {
+      html += '<div class="stats-section"><h3>按大类（成员）</h3>';
+      Object.keys(byMember).sort().forEach(m => {
+        const pct = total > 0 ? ((byMember[m] / total) * 100).toFixed(1) : 0;
+        html += `<div class="stats-bar"><div class="stats-bar-label">${m}: ¥${byMember[m].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:var(--primary-color)"></div></div></div>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="stats-section"><h3>按小类（分类）</h3>';
+      Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).forEach(c => {
+        const pct = total > 0 ? ((byCategory[c] / total) * 100).toFixed(1) : 0;
+        const color = CATEGORY_COLORS[c] || '#BDC3C7';
+        html += `<div class="stats-bar"><div class="stats-bar-label"><span class="color-dot" style="background:${color}"></span>${c}: ¥${byCategory[c].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
+      });
+      html += '</div>';
+    }
+    
     container.innerHTML = html;
   });
 }
 
-function populateYearMonthSelectors(records) {
-  const yearSelect = document.getElementById('stats-year');
-  const monthSelect = document.getElementById('stats-month');
-  
-  if (yearSelect.options.length > 1) return;
-  
-  const years = new Set();
-  records.forEach(r => years.add(new Date(r.date).getFullYear()));
-  const currentYear = new Date().getFullYear();
-  years.add(currentYear);
-  
-  [...years].sort().reverse().forEach(y => {
-    const opt = document.createElement('option');
-    opt.value = y;
-    opt.textContent = y + '年';
-    yearSelect.appendChild(opt);
-  });
-  
-  for (let i = 1; i <= 12; i++) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = i + '月';
-    monthSelect.appendChild(opt);
-  }
-
-  yearSelect.addEventListener('change', renderStats);
-  monthSelect.addEventListener('change', renderStats);
-}
-
-function renderSettings() {
-  const container = document.getElementById('settings-content');
-  container.innerHTML = `
-    <div class="settings-section">
-      <h3>分类管理</h3>
-      <div class="settings-item">
-        <div class="settings-info">
-          <strong>管理大类和小类</strong>
-          <p>添加、编辑或删除大类（成员）和小类（分类）</p>
-        </div>
-        <button id="manage-categories-btn" class="btn-primary">管理</button>
-      </div>
-      <div class="settings-item">
-        <div class="settings-info">
-          <strong>恢复默认分类</strong>
-          <p>将所有大类和小类恢复为默认设置</p>
-        </div>
-        <button id="reset-categories-btn" class="btn-secondary">恢复</button>
-      </div>
-    </div>
-    <div class="settings-section">
-      <h3>数据管理</h3>
-      <div class="settings-item">
-        <div class="settings-info">
-          <strong>导出数据</strong>
-          <p>导出记账记录 + 大类小类配置，用于备份或换机迁移</p>
-        </div>
-        <button id="export-btn" class="btn-primary">导出</button>
-      </div>
-      <div class="settings-item">
-        <div class="settings-info">
-          <strong>导入数据</strong>
-          <p>从备份文件导入记账记录和大类小类配置</p>
-        </div>
-        <button id="import-btn" class="btn-primary">选择文件</button>
-        <input type="file" id="import-file" accept=".json" style="display:none" />
-      </div>
-      <div class="settings-item danger">
-        <div class="settings-info">
-          <strong>清空所有数据</strong>
-          <p>删除所有记账记录和分类配置，此操作不可恢复</p>
-        </div>
-        <button id="clear-btn" class="btn-danger">清空</button>
-      </div>
-    </div>
-    <div class="settings-section">
-      <h3>关于</h3>
-      <p class="about-text">家庭记账本 v2.1</p>
-      <p class="about-text">多成员记账 · 本地存储 · 数据可迁移</p>
-    </div>
-  `;
-
-  document.getElementById('manage-categories-btn').addEventListener('click', openCategoryManager);
-  document.getElementById('reset-categories-btn').addEventListener('click', resetCategories);
-  document.getElementById('export-btn').addEventListener('click', handleExport);
-  document.getElementById('import-btn').addEventListener('click', () => {
-    document.getElementById('import-file').click();
-  });
-  document.getElementById('clear-btn').addEventListener('click', handleClear);
-  
-  const fileInput = document.getElementById('import-file');
-  if (fileInput) {
-    fileInput.addEventListener('change', handleImport);
+function setupSettingsPage() {
+  // 绑定管理分类按钮
+  const manageBtn = document.getElementById('manage-categories');
+  if (manageBtn && !manageBtn.dataset.bound) {
+    manageBtn.addEventListener('click', openCategoryManager);
+    manageBtn.dataset.bound = 'true';
   }
 }
 
@@ -478,8 +494,8 @@ function openCategoryManager() {
   renderMemberList(overlay);
   renderMemberTabs(overlay);
   
-  document.getElementById('add-member-btn').addEventListener('click', () => {
-    const input = document.getElementById('new-member-name');
+  overlay.querySelector('#add-member-btn').addEventListener('click', () => {
+    const input = overlay.querySelector('#new-member-name');
     const name = input.value.trim();
     if (!name) return;
     if (CATEGORIES[name]) {
@@ -519,7 +535,6 @@ function renderMemberList(overlay) {
             return;
           }
           const oldData = CATEGORIES[name];
-          const oldColorData = {};
           CATEGORIES[newName] = oldData;
           delete CATEGORIES[name];
           saveCategories();
@@ -623,8 +638,8 @@ function renderSubcategoryEditor(overlay, memberName) {
     });
   });
 
-  document.getElementById('add-sub-btn').addEventListener('click', () => {
-    const input = document.getElementById('new-sub-name');
+  editor.querySelector('#add-sub-btn').addEventListener('click', () => {
+    const input = editor.querySelector('#new-sub-name');
     const name = input.value.trim();
     if (!name) return;
     if (CATEGORIES[memberName].includes(name)) {
@@ -673,15 +688,6 @@ function showColorPicker(overlay, memberName, idx, currentColor) {
   picker.querySelector('#cancel-color').addEventListener('click', () => picker.remove());
 }
 
-function resetCategories() {
-  if (!confirm('确定恢复默认分类吗？这将删除所有自定义的大类和小类！')) return;
-  CATEGORIES = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-  CATEGORY_COLORS = JSON.parse(JSON.stringify(DEFAULT_COLORS));
-  saveCategories();
-  alert('已恢复默认分类');
-  renderSettings();
-}
-
 function handleExport() {
   getAllRecords().then(records => {
     const exportData = {
@@ -712,22 +718,18 @@ function handleImport(e) {
     try {
       const data = JSON.parse(evt.target.result);
       
-      // 兼容旧版本格式（只有records数组）
       let records = [];
       let hasSettings = false;
       
       if (Array.isArray(data)) {
-        // 旧格式：只有records数组
         records = data;
       } else if (data.records && Array.isArray(data.records)) {
-        // 新格式：包含完整数据
         records = data.records;
         hasSettings = true;
       } else {
         throw new Error('文件格式错误');
       }
       
-      // 构建确认消息
       let confirmMsg = `将导入 ${records.length} 条记账记录`;
       if (hasSettings && data.categories) {
         const memberCount = Object.keys(data.categories).length;
@@ -737,18 +739,17 @@ function handleImport(e) {
       
       if (!confirm(confirmMsg)) return;
       
-      // 导入大类小类配置
       if (hasSettings && data.categories) {
         CATEGORIES = data.categories;
         CATEGORY_COLORS = data.categoryColors || {};
         saveCategories();
+        renderMemberGrid();
       }
       
-      // 导入记账记录
       bulkAddRecords(records).then(() => {
         alert('导入成功！');
         e.target.value = '';
-        renderHome();
+        switchTab('home');
       }).catch(err => alert('导入失败: ' + err.message));
     } catch (err) {
       alert('文件解析失败: ' + err.message);
@@ -757,12 +758,12 @@ function handleImport(e) {
   reader.readAsText(file);
 }
 
-function handleClear() {
+function clearAllData() {
   if (!confirm('确定清空所有数据吗？此操作不可恢复！')) return;
   if (!confirm('再次确认：所有记账记录将被永久删除！')) return;
   clearAllRecords().then(() => {
     alert('已清空所有数据');
-    renderHome();
+    switchTab('home');
   });
 }
 
@@ -781,5 +782,14 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+// 导出函数供HTML onclick使用
+window.openCategoryManager = openCategoryManager;
+window.exportData = handleExport;
+window.handleImport = handleImport;
+window.triggerImport = function() {
+  document.getElementById('import-input').click();
+};
+window.clearAllData = clearAllData;
 
 document.addEventListener('DOMContentLoaded', initApp);
