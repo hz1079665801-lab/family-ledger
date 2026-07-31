@@ -1,11 +1,13 @@
-const CACHE_NAME = 'ledger-v2';
+const CACHE_NAME = 'ledger-v4';
 const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './db.js',
-  './manifest.json'
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {

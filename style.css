@@ -69,9 +69,15 @@ body {
 
 .app-main {
   width: 100%;
-  max-width: 600px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 12px;
+}
+
+@media (min-width: 768px) {
+  .app-main {
+    max-width: 600px;
+  }
 }
 
 .page {
@@ -579,16 +585,6 @@ body {
 
 .nav-label {
   font-size: 0.7rem;
-}
-
-@media (min-width: 768px) {
-  .app-main {
-    max-width: 500px;
-  }
-  
-  .record-actions {
-    display: flex;
-  }
 }
 
 @media (max-width: 360px) {

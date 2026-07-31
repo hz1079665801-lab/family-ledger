@@ -38,7 +38,15 @@ function initApp() {
   registerServiceWorker();
   loadCategories();
   setupEventListeners();
-  renderHome();
+  
+  // 检查URL参数，支持快捷方式
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  if (tab === 'add') {
+    switchTab('add');
+  } else {
+    renderHome();
+  }
 }
 
 function loadCategories() {
