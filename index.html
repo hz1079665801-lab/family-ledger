@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4CAF50">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <title>家庭记账本</title>
+</head>
+<body>
+  <header class="app-header">
+    <h1>家庭记账本</h1>
+    <p class="subtitle">记录每一笔开销</p>
+  </header>
+
+  <main class="app-main">
+    <!-- 首页：记录列表 -->
+    <section id="page-home" class="page active">
+      <div class="summary-card">
+        <div class="summary-item">
+          <span class="summary-label">本月支出</span>
+          <span class="summary-value">¥<span id="month-amount">0.00</span></span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-item">
+          <span class="summary-label">总支出</span>
+          <span class="summary-value">¥<span id="total-amount">0.00</span></span>
+        </div>
+      </div>
+      <div id="record-list" class="record-list"></div>
+    </section>
+
+    <!-- 添加/编辑页 -->
+    <section id="page-add" class="page">
+      <form id="record-form" class="record-form">
+        <h2 id="form-title">记一笔</h2>
+        
+        <div class="form-group">
+          <label>大类（成员）</label>
+          <div class="member-selector">
+            <button type="button" class="member-btn active" data-member="我">我</button>
+            <button type="button" class="member-btn" data-member="芊羽">芊羽</button>
+            <button type="button" class="member-btn" data-member="杰">杰</button>
+            <button type="button" class="member-btn" data-member="家庭">家庭</button>
+            <button type="button" class="member-btn" data-member="人情">人情</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>小类（分类）</label>
+          <div id="category-list" class="category-list"></div>
+          <input type="hidden" id="selected-category" value="">
+        </div>
+
+        <div class="form-group">
+          <label for="record-amount">金额</label>
+          <input type="number" id="record-amount" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+
+        <div class="form-group">
+          <label for="record-date">日期</label>
+          <input type="date" id="record-date" required>
+        </div>
+
+        <div class="form-group">
+          <label for="record-note">备注（可选）</label>
+          <input type="text" id="record-note" maxlength="50" placeholder="简短说明...">
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">保存</button>
+          <button type="button" id="cancel-btn" class="btn-secondary" style="display:none">取消</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 统计页 -->
+    <section id="page-stats" class="page">
+      <div class="stats-filter">
+        <select id="stats-year">
+          <option value="all">全部年份</option>
+        </select>
+        <select id="stats-month">
+          <option value="all">全部月份</option>
+        </select>
+      </div>
+      <div id="stats-content" class="stats-content"></div>
+    </section>
+
+    <!-- 设置页 -->
+    <section id="page-settings" class="page">
+      <div id="settings-content" class="settings-content"></div>
+    </section>
+  </main>
+
+  <!-- 底部导航 -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-tab="home" id="nav-home">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">记录</span>
+    </button>
+    <button class="nav-item" data-tab="add" id="nav-add">
+      <span class="nav-icon add-icon">+</span>
+      <span class="nav-label">记一笔</span>
+    </button>
+    <button class="nav-item" data-tab="stats" id="nav-stats">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">统计</span>
+    </button>
+    <button class="nav-item" data-tab="settings" id="nav-settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">设置</span>
+    </button>
+  </nav>
+
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
