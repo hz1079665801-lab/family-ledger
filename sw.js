@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qingnang-v1';
+const CACHE_NAME = 'qingnang-v2';
 const CORE_ASSETS = [
   './',
   './index.html',

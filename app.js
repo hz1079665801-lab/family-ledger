@@ -45,25 +45,36 @@ function showCustomModal({ title, content, buttons }) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'custom-modal-overlay';
+    overlay.style.touchAction = 'manipulation';
     overlay.innerHTML = `
       <div class="custom-modal">
         ${title ? `<div class="custom-modal-title">${title}</div>` : ''}
         <div class="custom-modal-content">${content}</div>
         <div class="custom-modal-actions">
           ${buttons.map((btn, idx) => 
-            `<button class="custom-modal-btn ${btn.primary ? 'primary' : ''}" data-idx="${idx}">${btn.text}</button>`
+            `<button class="custom-modal-btn ${btn.primary ? 'primary' : ''}" data-idx="${idx}" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent">${btn.text}</button>`
           ).join('')}
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
     
-    overlay.querySelectorAll('.custom-modal-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
+    const cleanup = (value) => {
+      if (overlay.parentNode) {
         overlay.remove();
-        resolve(buttons[idx].value);
-      });
+      }
+      resolve(value);
+    };
+    
+    overlay.querySelectorAll('.custom-modal-btn').forEach(btn => {
+      const handler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx);
+        cleanup(buttons[idx].value);
+      };
+      btn.addEventListener('click', handler);
+      btn.addEventListener('touchend', handler);
     });
   });
 }
@@ -807,6 +818,10 @@ function showCategoryDetail(key, allRecords) {
           </div>
         </div>
         <div class="record-amount">¥${r.amount.toFixed(2)}</div>
+        <div class="record-actions">
+          <button class="btn-edit" data-id="${r.id}">编辑</button>
+          <button class="btn-delete" data-id="${r.id}">删除</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -821,7 +836,7 @@ function showCategoryDetail(key, allRecords) {
       </div>
       <button class="stats-detail-close" id="detail-close">收起</button>
     </div>
-    <div class="stats-detail-records">${recordsHtml}</div>
+    <div class="stats-detail-records" id="stats-detail-records">${recordsHtml}</div>
   `;
   
   detail.style.display = 'block';
@@ -829,6 +844,31 @@ function showCategoryDetail(key, allRecords) {
   
   document.getElementById('detail-close').addEventListener('click', () => {
     detail.style.display = 'none';
+  });
+  
+  // 添加编辑/删除按钮事件
+  const recordsContainer = document.getElementById('stats-detail-records');
+  recordsContainer.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const record = detailRecords.find(r => r.id === id);
+      if (record) {
+        detail.style.display = 'none';
+        editRecord(record);
+      }
+    });
+  });
+  
+  recordsContainer.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      await deleteRecordItem(id);
+      // 删除后刷新统计
+      detail.style.display = 'none';
+      renderStats();
+    });
   });
 }
 
@@ -900,8 +940,11 @@ function renderMemberList(overlay) {
   const list = overlay.querySelector('#member-list');
   const members = Object.keys(CATEGORIES);
   list.innerHTML = members.map((m, idx) => `
-    <div class="category-item" draggable="true" data-member="${escapeHtml(m)}" data-idx="${idx}">
-      <span class="drag-handle">≡</span>
+    <div class="category-item" data-member="${escapeHtml(m)}" data-idx="${idx}">
+      <div class="sort-buttons">
+        <button class="btn-icon sort-btn" data-action="move-up" data-member="${escapeHtml(m)}" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn-icon sort-btn" data-action="move-down" data-member="${escapeHtml(m)}" data-idx="${idx}" ${idx === members.length - 1 ? 'disabled' : ''}>↓</button>
+      </div>
       <span class="category-name">${escapeHtml(m)}</span>
       <div class="category-item-actions">
         <button class="btn-icon" data-action="edit-member" data-name="${escapeHtml(m)}">✏️</button>
@@ -946,59 +989,16 @@ function renderMemberList(overlay) {
         saveCategories();
         renderMemberList(overlay);
         renderMemberTabs(overlay);
-      }
-    });
-  });
-
-  // 拖拽排序
-  setupDragSort(list, 'member');
-}
-
-function setupDragSort(container, type) {
-  let dragSrcIdx = null;
-  
-  container.querySelectorAll('.category-item').forEach(item => {
-    item.addEventListener('dragstart', (e) => {
-      dragSrcIdx = parseInt(item.dataset.idx);
-      item.style.opacity = '0.5';
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    
-    item.addEventListener('dragend', () => {
-      item.style.opacity = '1';
-    });
-    
-    item.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      const rect = item.getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      
-      container.querySelectorAll('.category-item').forEach(i => i.classList.remove('drag-before', 'drag-after'));
-      if (e.clientY < midY) {
-        item.classList.add('drag-before');
-      } else {
-        item.classList.add('drag-after');
-      }
-    });
-    
-    item.addEventListener('dragleave', () => {
-      item.classList.remove('drag-before', 'drag-after');
-    });
-    
-    item.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const targetIdx = parseInt(item.dataset.idx);
-      const insertBefore = item.classList.contains('drag-before');
-      
-      if (dragSrcIdx === targetIdx) return;
-      
-      if (type === 'member') {
+      } else if (action === 'move-up' || action === 'move-down') {
+        const idx = parseInt(btn.dataset.idx);
+        const memberName = btn.dataset.member;
         const members = Object.keys(CATEGORIES);
-        const movedItem = members[dragSrcIdx];
-        members.splice(dragSrcIdx, 1);
+        const targetIdx = action === 'move-up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= members.length) return;
         
-        const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
-        members.splice(insertIdx, 0, movedItem);
+        const movedItem = members[idx];
+        members.splice(idx, 1);
+        members.splice(targetIdx, 0, movedItem);
         
         const newCategories = {};
         members.forEach(m => {
@@ -1006,19 +1006,8 @@ function setupDragSort(container, type) {
         });
         CATEGORIES = newCategories;
         saveCategories();
-        renderMemberList(container.closest('.modal'));
-        renderMemberTabs(container.closest('.modal'));
-      } else {
-        const memberName = container.dataset.member;
-        const subcategories = CATEGORIES[memberName];
-        const movedItem = subcategories[dragSrcIdx];
-        subcategories.splice(dragSrcIdx, 1);
-        
-        const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
-        subcategories.splice(insertIdx, 0, movedItem);
-        
-        saveCategories();
-        renderMemberTabs(container.closest('.modal'));
+        renderMemberList(overlay);
+        renderMemberTabs(overlay);
       }
     });
   });
@@ -1055,8 +1044,11 @@ function renderSubcategoryEditor(overlay, memberName) {
     <div class="current-member-name">当前大类：<strong>${escapeHtml(memberName)}</strong></div>
     <div class="subcategory-list" id="sub-list" data-member="${escapeHtml(memberName)}">
       ${subcategories.map((sub, idx) => `
-        <div class="subcategory-item" draggable="true" data-idx="${idx}">
-          <span class="drag-handle">≡</span>
+        <div class="subcategory-item" data-idx="${idx}">
+          <div class="sort-buttons">
+            <button class="btn-icon sort-btn" data-action="move-up-sub" data-member="${escapeHtml(memberName)}" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn-icon sort-btn" data-action="move-down-sub" data-member="${escapeHtml(memberName)}" data-idx="${idx}" ${idx === subcategories.length - 1 ? 'disabled' : ''}>↓</button>
+          </div>
           <span class="subcategory-color" style="background:${CATEGORY_COLORS[sub] || '#BDC3C7'}"></span>
           <span class="subcategory-name">${escapeHtml(sub)}</span>
           <div class="subcategory-actions">
@@ -1111,6 +1103,16 @@ function renderSubcategoryEditor(overlay, memberName) {
         if (CATEGORIES[member].length === 0) {
           CATEGORIES[member].push('其他');
         }
+        saveCategories();
+        renderSubcategoryEditor(overlay, member);
+      } else if (action === 'move-up-sub' || action === 'move-down-sub') {
+        const subcategories = CATEGORIES[member];
+        const targetIdx = action === 'move-up-sub' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= subcategories.length) return;
+        
+        const movedItem = subcategories[idx];
+        subcategories.splice(idx, 1);
+        subcategories.splice(targetIdx, 0, movedItem);
         saveCategories();
         renderSubcategoryEditor(overlay, member);
       }
