@@ -45,36 +45,34 @@ function showCustomModal({ title, content, buttons }) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'custom-modal-overlay';
-    overlay.style.touchAction = 'manipulation';
     overlay.innerHTML = `
       <div class="custom-modal">
         ${title ? `<div class="custom-modal-title">${title}</div>` : ''}
         <div class="custom-modal-content">${content}</div>
         <div class="custom-modal-actions">
           ${buttons.map((btn, idx) => 
-            `<button class="custom-modal-btn ${btn.primary ? 'primary' : ''}" data-idx="${idx}" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent">${btn.text}</button>`
+            `<button class="custom-modal-btn ${btn.primary ? 'primary' : ''}" data-idx="${idx}">${btn.text}</button>`
           ).join('')}
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
     
+    let resolved = false;
+    
     const cleanup = (value) => {
-      if (overlay.parentNode) {
-        overlay.remove();
-      }
+      if (resolved) return;
+      resolved = true;
+      overlay.remove();
       resolve(value);
     };
     
     overlay.querySelectorAll('.custom-modal-btn').forEach(btn => {
-      const handler = (e) => {
+      btn.addEventListener('click', (e) => {
         e.preventDefault();
-        e.stopPropagation();
         const idx = parseInt(btn.dataset.idx);
         cleanup(buttons[idx].value);
-      };
-      btn.addEventListener('click', handler);
-      btn.addEventListener('touchend', handler);
+      });
     });
   });
 }
@@ -852,7 +850,8 @@ function showCategoryDetail(key, allRecords) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.dataset.id;
-      const record = detailRecords.find(r => r.id === id);
+      // 使用宽松比较或转换为数字匹配
+      const record = detailRecords.find(r => String(r.id) === id);
       if (record) {
         detail.style.display = 'none';
         editRecord(record);
