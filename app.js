@@ -45,35 +45,47 @@ function showCustomModal({ title, content, buttons }) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'custom-modal-overlay';
-    overlay.innerHTML = `
-      <div class="custom-modal">
-        ${title ? `<div class="custom-modal-title">${title}</div>` : ''}
-        <div class="custom-modal-content">${content}</div>
-        <div class="custom-modal-actions">
-          ${buttons.map((btn, idx) => 
-            `<button class="custom-modal-btn ${btn.primary ? 'primary' : ''}" data-idx="${idx}">${btn.text}</button>`
-          ).join('')}
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    
+
+    const modal = document.createElement('div');
+    modal.className = 'custom-modal';
+
+    if (title) {
+      const titleEl = document.createElement('div');
+      titleEl.className = 'custom-modal-title';
+      titleEl.innerHTML = title;
+      modal.appendChild(titleEl);
+    }
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'custom-modal-content';
+    contentEl.innerHTML = content;
+    modal.appendChild(contentEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'custom-modal-actions';
+
     let resolved = false;
-    
     const cleanup = (value) => {
       if (resolved) return;
       resolved = true;
-      overlay.remove();
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
       resolve(value);
     };
-    
-    overlay.querySelectorAll('.custom-modal-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const idx = parseInt(btn.dataset.idx);
-        cleanup(buttons[idx].value);
-      });
+
+    buttons.forEach(btn => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'custom-modal-btn' + (btn.primary ? ' primary' : '');
+      button.textContent = btn.text;
+      button.addEventListener('click', () => cleanup(btn.value));
+      actions.appendChild(button);
     });
+
+    modal.appendChild(actions);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
   });
 }
 
@@ -529,6 +541,9 @@ function editRecord(record) {
 }
 
 async function deleteRecordItem(id) {
+  // 确保 id 是数字类型（IndexedDB 要求键类型匹配）
+  const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+
   const confirmed = await showCustomModal({
     title: '删除记录',
     content: '确定删除这条记录吗？',
@@ -537,15 +552,27 @@ async function deleteRecordItem(id) {
       { text: '确定删除', value: 'confirm', primary: true }
     ]
   });
-  
+
   if (confirmed !== 'confirm') return;
-  
+
   try {
-    await deleteRecord(id);
-    if (editingId === id) {
+    await deleteRecord(numericId);
+    if (editingId === numericId || editingId === id) {
       editingId = null;
     }
-    switchTab('home');
+    showToast('删除成功');
+    // 刷新当前页面数据
+    const activeTab = document.querySelector('.nav-btn.active');
+    if (activeTab) {
+      const tab = activeTab.dataset.tab;
+      if (tab === 'list') {
+        renderAllRecords();
+      } else if (tab === 'home') {
+        renderHome();
+      } else if (tab === 'stats') {
+        renderStats();
+      }
+    }
   } catch (err) {
     showToast('删除失败: ' + err.message);
   }
@@ -788,87 +815,89 @@ function getCountForCategory(records, key, type) {
 
 function showCategoryDetail(key, allRecords) {
   const detail = document.getElementById('stats-detail');
-  
+
   const detailRecords = allRecords.filter(r => {
     return statsType === 'member' ? r.member === key : r.category === key;
   });
-  
+
   const total = detailRecords.reduce((s, r) => s + r.amount, 0);
-  const pct = allRecords.reduce((s, r) => s + r.amount, 0) > 0 
-    ? ((total / allRecords.reduce((s, r) => s + r.amount, 0)) * 100).toFixed(1) 
-    : '0.0';
-  
+  const totalAll = allRecords.reduce((s, r) => s + r.amount, 0);
+  const pct = totalAll > 0 ? ((total / totalAll) * 100).toFixed(1) : '0.0';
+
   detailRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
-  
-  let recordsHtml = detailRecords.map(r => {
-    const color = CATEGORY_COLORS[r.category] || '#BDC3C7';
-    return `
-      <div class="record-item">
-        <div class="record-color" style="background:${color}"></div>
-        <div class="record-info">
-          <div class="record-main">
-            <span class="record-member">${escapeHtml(r.member)}</span>
-            <span class="record-category">${escapeHtml(r.category)}</span>
-          </div>
-          <div class="record-sub">
-            <span>${r.date}</span>
-            ${r.note ? `<span class="record-note">${escapeHtml(r.note)}</span>` : ''}
-          </div>
-        </div>
-        <div class="record-amount">¥${r.amount.toFixed(2)}</div>
-        <div class="record-actions">
-          <button class="btn-edit" data-id="${r.id}">编辑</button>
-          <button class="btn-delete" data-id="${r.id}">删除</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-  
-  detail.innerHTML = `
-    <div class="stats-detail-header">
-      <h4>${escapeHtml(key)} 明细</h4>
-      <div class="stats-detail-summary">
-        <span>共${detailRecords.length}笔</span>
-        <span>总计：¥${total.toFixed(2)}</span>
-        <span>${pct}%</span>
-      </div>
-      <button class="stats-detail-close" id="detail-close">收起</button>
+
+  // 用 DOM API 构建明细，确保事件可靠绑定
+  detail.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'stats-detail-header';
+  header.innerHTML = `
+    <h4>${escapeHtml(key)} 明细</h4>
+    <div class="stats-detail-summary">
+      <span>共${detailRecords.length}笔</span>
+      <span>总计：¥${total.toFixed(2)}</span>
+      <span>${pct}%</span>
     </div>
-    <div class="stats-detail-records" id="stats-detail-records">${recordsHtml}</div>
   `;
-  
-  detail.style.display = 'block';
-  detail.scrollIntoView({ behavior: 'smooth' });
-  
-  document.getElementById('detail-close').addEventListener('click', () => {
-    detail.style.display = 'none';
-  });
-  
-  // 添加编辑/删除按钮事件
-  const recordsContainer = document.getElementById('stats-detail-records');
-  recordsContainer.querySelectorAll('.btn-edit').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'stats-detail-close';
+  closeBtn.textContent = '收起';
+  closeBtn.addEventListener('click', () => { detail.style.display = 'none'; });
+  header.appendChild(closeBtn);
+  detail.appendChild(header);
+
+  const recordsContainer = document.createElement('div');
+  recordsContainer.className = 'stats-detail-records';
+
+  detailRecords.forEach(r => {
+    const color = CATEGORY_COLORS[r.category] || '#BDC3C7';
+    const item = document.createElement('div');
+    item.className = 'record-item';
+    item.innerHTML = `
+      <div class="record-color" style="background:${color}"></div>
+      <div class="record-info">
+        <div class="record-main">
+          <span class="record-member">${escapeHtml(r.member)}</span>
+          <span class="record-category">${escapeHtml(r.category)}</span>
+        </div>
+        <div class="record-sub">
+          <span>${r.date}</span>
+          ${r.note ? `<span class="record-note">${escapeHtml(r.note)}</span>` : ''}
+        </div>
+      </div>
+      <div class="record-amount">¥${r.amount.toFixed(2)}</div>
+      <div class="record-actions"></div>
+    `;
+
+    const actionsEl = item.querySelector('.record-actions');
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn-edit';
+    editBtn.textContent = '编辑';
+    editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const id = btn.dataset.id;
-      // 使用宽松比较或转换为数字匹配
-      const record = detailRecords.find(r => String(r.id) === id);
-      if (record) {
-        detail.style.display = 'none';
-        editRecord(record);
-      }
+      detail.style.display = 'none';
+      editRecord(r);
     });
-  });
-  
-  recordsContainer.querySelectorAll('.btn-delete').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-delete';
+    delBtn.textContent = '删除';
+    delBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const id = btn.dataset.id;
-      await deleteRecordItem(id);
-      // 删除后刷新统计
+      await deleteRecordItem(r.id);
       detail.style.display = 'none';
       renderStats();
     });
+
+    actionsEl.appendChild(editBtn);
+    actionsEl.appendChild(delBtn);
+    recordsContainer.appendChild(item);
   });
+
+  detail.appendChild(recordsContainer);
+  detail.style.display = 'block';
+  detail.scrollIntoView({ behavior: 'smooth' });
 }
 
 // ========== 设置页 ==========
