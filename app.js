@@ -38,54 +38,96 @@ let calendarMonth = new Date();
 let statsPeriod = 'month';
 let statsDate = new Date();
 let statsType = 'member';
+let editFromStats = false; // 标记是否从统计页进入编辑
+let statsDetailKey = null; // 保存统计页展开的明细key
 
 // ========== 自定义弹窗系统 ==========
 
+let currentModal = null;
+
 function showCustomModal({ title, content, buttons }) {
   return new Promise((resolve) => {
+    // 关闭已有弹窗
+    if (currentModal) {
+      currentModal.remove();
+      currentModal = null;
+    }
+
     const overlay = document.createElement('div');
     overlay.className = 'custom-modal-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.zIndex = '9999';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.background = 'rgba(0,0,0,0.5)';
+    overlay.style.padding = '20px';
 
     const modal = document.createElement('div');
-    modal.className = 'custom-modal';
+    modal.style.background = 'white';
+    modal.style.borderRadius = '16px';
+    modal.style.width = '100%';
+    modal.style.maxWidth = '360px';
+    modal.style.overflow = 'hidden';
+    modal.style.boxShadow = '0 10px 40px rgba(0,0,0,0.2)';
 
     if (title) {
       const titleEl = document.createElement('div');
       titleEl.className = 'custom-modal-title';
       titleEl.innerHTML = title;
+      titleEl.style.padding = '18px 20px 12px';
+      titleEl.style.fontSize = '1.1rem';
+      titleEl.style.fontWeight = '600';
+      titleEl.style.textAlign = 'center';
       modal.appendChild(titleEl);
     }
 
     const contentEl = document.createElement('div');
     contentEl.className = 'custom-modal-content';
     contentEl.innerHTML = content;
+    contentEl.style.padding = '0 20px 16px';
+    contentEl.style.fontSize = '0.9rem';
+    contentEl.style.color = '#666';
+    contentEl.style.lineHeight = '1.5';
     modal.appendChild(contentEl);
 
     const actions = document.createElement('div');
-    actions.className = 'custom-modal-actions';
+    actions.style.display = 'flex';
+    actions.style.borderTop = '1px solid #eee';
 
-    let resolved = false;
-    const cleanup = (value) => {
-      if (resolved) return;
-      resolved = true;
-      if (overlay.parentNode) {
-        overlay.parentNode.removeChild(overlay);
-      }
-      resolve(value);
-    };
-
-    buttons.forEach(btn => {
+    buttons.forEach((btn, idx) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'custom-modal-btn' + (btn.primary ? ' primary' : '');
       button.textContent = btn.text;
-      button.addEventListener('click', () => cleanup(btn.value));
+      button.style.flex = '1';
+      button.style.padding = '14px';
+      button.style.background = 'none';
+      button.style.border = 'none';
+      button.style.fontSize = '1rem';
+      button.style.cursor = 'pointer';
+      button.style.color = btn.primary ? 'var(--primary-color)' : '#666';
+      if (btn.primary) button.style.fontWeight = '600';
+      if (idx > 0) button.style.borderLeft = '1px solid #eee';
+      
+      button.onclick = function() {
+        if (currentModal === overlay) {
+          currentModal = null;
+        }
+        overlay.remove();
+        resolve(btn.value);
+      };
+      
       actions.appendChild(button);
     });
 
     modal.appendChild(actions);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+    currentModal = overlay;
   });
 }
 
@@ -515,7 +557,21 @@ async function handleSave() {
       await addRecord(record);
     }
     editingId = null;
-    switchTab('home');
+    
+    // 如果从统计页进入编辑，保存后回到统计页并展开明细
+    if (editFromStats && statsDetailKey) {
+      editFromStats = false;
+      switchTab('stats');
+      // 重新渲染统计并展开明细
+      const records = await getAllRecords();
+      renderStats();
+      // 延迟一点等待渲染完成
+      setTimeout(() => {
+        showCategoryDetail(statsDetailKey, records);
+      }, 100);
+    } else {
+      switchTab('home');
+    }
   } catch (err) {
     showToast('保存失败: ' + err.message);
   }
@@ -816,6 +872,9 @@ function getCountForCategory(records, key, type) {
 function showCategoryDetail(key, allRecords) {
   const detail = document.getElementById('stats-detail');
 
+  // 保存当前展开的 key，用于编辑后恢复
+  statsDetailKey = key;
+
   const detailRecords = allRecords.filter(r => {
     return statsType === 'member' ? r.member === key : r.category === key;
   });
@@ -877,6 +936,7 @@ function showCategoryDetail(key, allRecords) {
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       detail.style.display = 'none';
+      editFromStats = true; // 标记来自统计页
       editRecord(r);
     });
 
