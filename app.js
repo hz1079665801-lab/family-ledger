@@ -754,7 +754,8 @@ function renderStats() {
     
     const total = filtered.reduce((s, r) => s + r.amount, 0);
     
-    document.getElementById('chart-center-value').textContent = '¥' + total.toFixed(2);
+    const totalStr = total.toFixed(2);
+    document.getElementById('chart-center-value').textContent = totalStr;
     document.getElementById('chart-center-label').textContent = 
       statsPeriod === 'month' ? '本月支出' : '本年支出';
     
@@ -785,7 +786,6 @@ function drawPieChart(data, colorMap) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   
-  // 设置高DPI支持
   const displayWidth = 320;
   const displayHeight = 320;
   canvas.width = displayWidth * dpr;
@@ -796,8 +796,8 @@ function drawPieChart(data, colorMap) {
   
   const centerX = displayWidth / 2;
   const centerY = displayHeight / 2;
-  const radius = 80;
-  const innerRadius = 45;
+  const radius = 78;
+  const innerRadius = 55; // 更大的内半径 = 更细的环
   const labelRadius = radius + 35;
   
   ctx.clearRect(0, 0, displayWidth, displayHeight);
@@ -833,7 +833,6 @@ function drawPieChart(data, colorMap) {
     ctx.fillStyle = color;
     ctx.fill();
     
-    // 记录每个扇形的中间角度
     const midAngle = startAngle + sliceAngle / 2;
     slices.push({ key, value, midAngle, color, pct: (value / total) * 100 });
     
@@ -841,11 +840,9 @@ function drawPieChart(data, colorMap) {
   });
   
   // 画引线标签
-  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = '11px -apple-system, sans-serif';
   
-  slices.forEach((slice, idx) => {
+  slices.forEach((slice) => {
     const { key, midAngle, pct } = slice;
     
     // 引线起点（饼图边缘）
@@ -876,8 +873,8 @@ function drawPieChart(data, colorMap) {
     
     ctx.textAlign = isRight ? 'left' : 'right';
     ctx.fillStyle = '#666';
+    ctx.font = '11px -apple-system, sans-serif';
     
-    // 画标签文字
     const labelText = `${key} ${pct.toFixed(1)}%`;
     ctx.fillText(labelText, labelX, labelY);
   });
@@ -1335,10 +1332,13 @@ async function handleExport() {
   const result = await showCustomModal({
     title: '导出文件',
     content: `
-      <div class="export-dialog">
-        <label>文件名：</label>
-        <input type="text" id="export-filename" value="${defaultName}" class="export-input">
-        <div class="export-info">将导出：记账记录 + 分类配置</div>
+      <div style="padding:0 10px;">
+        <div style="margin-bottom:12px;color:#666;font-size:0.9rem;">将导出：记账记录 + 分类配置</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="color:#666;font-size:0.9rem;">文件名：</span>
+          <input type="text" id="export-filename" value="${defaultName}" 
+            style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem;outline:none;">
+        </div>
       </div>
     `,
     buttons: [
@@ -1351,8 +1351,10 @@ async function handleExport() {
   
   const filenameInput = document.querySelector('#export-filename');
   const filename = filenameInput ? filenameInput.value.trim() : defaultName;
+  const finalFilename = filename.endsWith('.json') ? filename : filename + '.json';
   
-  getAllRecords().then(records => {
+  try {
+    const records = await getAllRecords();
     const exportData = {
       version: '2.0',
       exportTime: new Date().toISOString(),
@@ -1362,15 +1364,26 @@ async function handleExport() {
     };
     const dataStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
+    
+    // 创建下载链接并触发
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename.endsWith('.json') ? filename : filename + '.json';
+    a.download = finalFilename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
     
-    showToast('保存成功！');
-  });
+    // 延迟清理
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+    
+    showToast('导出成功！');
+  } catch (err) {
+    showToast('导出失败: ' + err.message);
+  }
 }
 
 function exportExcel() {

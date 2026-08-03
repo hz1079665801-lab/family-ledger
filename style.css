@@ -1505,18 +1505,25 @@ input, select, button, textarea {
   transform: translate(-50%, -50%);
   text-align: center;
   pointer-events: none;
+  width: 90px;
+  overflow: hidden;
 }
 
 .chart-center-label {
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .chart-center-value {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--primary-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* 分类列表 */
