@@ -1488,14 +1488,14 @@ input, select, button, textarea {
 /* 图表容器 */
 .chart-container {
   position: relative;
-  width: 280px;
-  height: 280px;
+  width: 320px;
+  height: 320px;
   margin: 0 auto 20px;
 }
 
 #pie-chart {
-  width: 280px;
-  height: 280px;
+  width: 320px;
+  height: 320px;
 }
 
 .chart-center-info {

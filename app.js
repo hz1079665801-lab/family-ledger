@@ -312,15 +312,16 @@ function renderHome() {
     
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentYear = String(now.getFullYear());
     
-    let totalAmount = 0, monthAmount = 0;
+    let yearAmount = 0, monthAmount = 0;
     records.forEach(r => {
-      totalAmount += r.amount;
+      if (r.date.startsWith(currentYear)) yearAmount += r.amount;
       if (r.date.startsWith(currentMonth)) monthAmount += r.amount;
     });
     
     document.getElementById('month-total').textContent = '¥' + monthAmount.toFixed(2);
-    document.getElementById('all-total').textContent = '¥' + totalAmount.toFixed(2);
+    document.getElementById('all-total').textContent = '¥' + yearAmount.toFixed(2);
     
     renderCalendar(records);
     
@@ -782,11 +783,24 @@ function filterRecordsByPeriod(records) {
 function drawPieChart(data, colorMap) {
   const canvas = document.getElementById('pie-chart');
   const ctx = canvas.getContext('2d');
-  const centerX = 140, centerY = 140;
-  const radius = 110;
-  const innerRadius = 60;
+  const dpr = window.devicePixelRatio || 1;
   
-  ctx.clearRect(0, 0, 280, 280);
+  // 设置高DPI支持
+  const displayWidth = 320;
+  const displayHeight = 320;
+  canvas.width = displayWidth * dpr;
+  canvas.height = displayHeight * dpr;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = displayHeight + 'px';
+  ctx.scale(dpr, dpr);
+  
+  const centerX = displayWidth / 2;
+  const centerY = displayHeight / 2;
+  const radius = 80;
+  const innerRadius = 45;
+  const labelRadius = radius + 35;
+  
+  ctx.clearRect(0, 0, displayWidth, displayHeight);
   
   const entries = Object.entries(data);
   const total = entries.reduce((s, [, v]) => s + v, 0);
@@ -804,6 +818,8 @@ function drawPieChart(data, colorMap) {
   
   const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9', '#F8B500', '#FF69B4', '#00CED1', '#9370DB', '#BDC3C7'];
   
+  // 先画饼图
+  const slices = [];
   entries.forEach(([key, value], idx) => {
     const sliceAngle = (value / total) * Math.PI * 2;
     const endAngle = startAngle + sliceAngle;
@@ -817,7 +833,53 @@ function drawPieChart(data, colorMap) {
     ctx.fillStyle = color;
     ctx.fill();
     
+    // 记录每个扇形的中间角度
+    const midAngle = startAngle + sliceAngle / 2;
+    slices.push({ key, value, midAngle, color, pct: (value / total) * 100 });
+    
     startAngle = endAngle;
+  });
+  
+  // 画引线标签
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '11px -apple-system, sans-serif';
+  
+  slices.forEach((slice, idx) => {
+    const { key, midAngle, pct } = slice;
+    
+    // 引线起点（饼图边缘）
+    const startX = centerX + Math.cos(midAngle) * radius;
+    const startY = centerY + Math.sin(midAngle) * radius;
+    
+    // 引线折点
+    const midX = centerX + Math.cos(midAngle) * (radius + 8);
+    const midY = centerY + Math.sin(midAngle) * (radius + 8);
+    
+    // 引线终点
+    const endX = centerX + Math.cos(midAngle) * labelRadius;
+    const endY = centerY + Math.sin(midAngle) * labelRadius;
+    
+    // 画引线
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(midX, midY);
+    ctx.lineTo(endX, endY);
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+    
+    // 根据位置确定文字对齐方向
+    const isRight = Math.cos(midAngle) >= 0;
+    const labelX = endX + (isRight ? 8 : -8);
+    const labelY = endY;
+    
+    ctx.textAlign = isRight ? 'left' : 'right';
+    ctx.fillStyle = '#666';
+    
+    // 画标签文字
+    const labelText = `${key} ${pct.toFixed(1)}%`;
+    ctx.fillText(labelText, labelX, labelY);
   });
 }
 
