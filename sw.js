@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ledger-v10';
+const CACHE_NAME = 'qingnang-v1';
 const CORE_ASSETS = [
   './',
   './index.html',

@@ -34,11 +34,60 @@ let currentTab = 'home';
 let currentMember = '我';
 let currentCategory = '';
 let editingId = null;
+let calendarMonth = new Date();
+let statsPeriod = 'month';
+let statsDate = new Date();
+let statsType = 'member';
+
+// ========== 自定义弹窗系统 ==========
+
+function showCustomModal({ title, content, buttons }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-modal-overlay';
+    overlay.innerHTML = `
+      <div class="custom-modal">
+        ${title ? `<div class="custom-modal-title">${title}</div>` : ''}
+        <div class="custom-modal-content">${content}</div>
+        <div class="custom-modal-actions">
+          ${buttons.map((btn, idx) => 
+            `<button class="custom-modal-btn ${btn.primary ? 'primary' : ''}" data-idx="${idx}">${btn.text}</button>`
+          ).join('')}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    overlay.querySelectorAll('.custom-modal-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        overlay.remove();
+        resolve(buttons[idx].value);
+      });
+    });
+  });
+}
+
+function showToast(message, duration = 2000) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.classList.add('show');
+  }, 10);
+  
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// ========== 初始化 ==========
 
 function initApp() {
-  // 强制修复Edge浏览器缩放
   forceEdgeFix();
-  
   registerServiceWorker();
   loadCategories();
   renderMemberGrid();
@@ -59,36 +108,18 @@ function forceEdgeFix() {
   
   if (!isEdgeMobile) return;
   
-  // 延迟检测，确保viewport已经应用
   setTimeout(() => {
     const screenW = window.screen.width;
     const viewportW = window.innerWidth;
     
-    console.log(`[Edge修复] screen=${screenW}, viewport=${viewportW}`);
-    
-    // 如果viewport明显小于屏幕宽度
     if (viewportW > 0 && screenW > viewportW * 1.05) {
       const scale = screenW / viewportW;
-      
-      console.log(`[Edge修复] scale=${scale.toFixed(3)}`);
-      
-      // 方案：用transform放大整个body
       const body = document.body;
-      
-      // 保存原始样式
-      const origWidth = body.style.width;
-      const origTransform = body.style.transform;
-      
-      // 设置body为屏幕宽度
       body.style.width = screenW + 'px';
       body.style.transformOrigin = 'top left';
       body.style.transform = `scale(${1/scale})`;
-      
-      // 调整高度
       const scrollH = document.documentElement.scrollHeight;
       document.documentElement.style.minHeight = (scrollH / scale) + 'px';
-      
-      console.log('[Edge修复] 应用transform缩放完成');
     }
   }, 100);
 }
@@ -116,53 +147,87 @@ function registerServiceWorker() {
 }
 
 function setupEventListeners() {
-  // 保存按钮
   document.getElementById('btn-save').addEventListener('click', handleSave);
   
-  // 导入文件
   const importInput = document.getElementById('import-input');
   if (importInput) {
     importInput.addEventListener('change', handleImport);
   }
   
-  // 列表页筛选
   const filterMember = document.getElementById('filter-member');
   const filterCategory = document.getElementById('filter-category');
   if (filterMember) filterMember.addEventListener('change', renderAllRecords);
   if (filterCategory) filterCategory.addEventListener('change', renderAllRecords);
   
-  // 搜索
   const searchInput = document.getElementById('search-input');
   if (searchInput) {
     searchInput.addEventListener('input', renderAllRecords);
   }
   
-  // 统计页标签
   document.querySelectorAll('.stats-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.stats-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
+      statsType = tab.dataset.type;
       renderStats();
     });
+  });
+  
+  // 统计页日期选择
+  document.querySelectorAll('.date-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      statsPeriod = btn.dataset.period;
+      renderStats();
+    });
+  });
+  
+  const statsPrev = document.getElementById('stats-prev');
+  const statsNext = document.getElementById('stats-next');
+  if (statsPrev) statsPrev.addEventListener('click', () => {
+    if (statsPeriod === 'month') {
+      statsDate.setMonth(statsDate.getMonth() - 1);
+    } else {
+      statsDate.setFullYear(statsDate.getFullYear() - 1);
+    }
+    renderStats();
+  });
+  if (statsNext) statsNext.addEventListener('click', () => {
+    if (statsPeriod === 'month') {
+      statsDate.setMonth(statsDate.getMonth() + 1);
+    } else {
+      statsDate.setFullYear(statsDate.getFullYear() + 1);
+    }
+    renderStats();
+  });
+  
+  // 日历导航
+  const prevMonth = document.getElementById('prev-month');
+  const nextMonth = document.getElementById('next-month');
+  if (prevMonth) prevMonth.addEventListener('click', () => {
+    calendarMonth.setMonth(calendarMonth.getMonth() - 1);
+    renderHome();
+  });
+  if (nextMonth) nextMonth.addEventListener('click', () => {
+    calendarMonth.setMonth(calendarMonth.getMonth() + 1);
+    renderHome();
   });
 }
 
 function switchTab(tab) {
   currentTab = tab;
   
-  // 更新底部导航
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
   
-  // 切换页面
   document.querySelectorAll('.page').forEach(page => {
     page.classList.remove('active');
   });
   const pageEl = document.getElementById(tab + '-page');
   if (pageEl) pageEl.classList.add('active');
   
-  // 渲染对应页面
   if (tab === 'home') renderHome();
   if (tab === 'add') { 
     if (editingId === null) resetAddForm();
@@ -176,8 +241,9 @@ function switchTab(tab) {
   if (tab === 'settings') setupSettingsPage();
 }
 
+// ========== 首页渲染 ==========
+
 function renderHome() {
-  // 渲染汇总
   getAllRecords().then(records => {
     records.sort((a, b) => new Date(b.date) - new Date(a.date));
     
@@ -193,7 +259,8 @@ function renderHome() {
     document.getElementById('month-total').textContent = '¥' + monthAmount.toFixed(2);
     document.getElementById('all-total').textContent = '¥' + totalAmount.toFixed(2);
     
-    // 渲染最近记录
+    renderCalendar(records);
+    
     const recentContainer = document.getElementById('recent-records');
     if (!recentContainer) return;
     
@@ -210,6 +277,108 @@ function renderHome() {
     });
   });
 }
+
+function renderCalendar(records) {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  
+  document.getElementById('calendar-title').textContent = `${year}年${month + 1}月`;
+  
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDay = (firstDay.getDay() + 6) % 7; // 周一为起始
+  
+  const daysInMonth = lastDay.getDate();
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+  
+  // 计算每日支出
+  const dailyExpenses = {};
+  records.forEach(r => {
+    const date = new Date(r.date);
+    if (date.getFullYear() === year && date.getMonth() === month) {
+      const day = date.getDate();
+      if (!dailyExpenses[day]) dailyExpenses[day] = 0;
+      dailyExpenses[day] += r.amount;
+    }
+  });
+  
+  const grid = document.getElementById('calendar-grid');
+  grid.innerHTML = '';
+  
+  // 前置空白
+  for (let i = 0; i < startDay; i++) {
+    const empty = document.createElement('div');
+    empty.className = 'calendar-day empty';
+    grid.appendChild(empty);
+  }
+  
+  // 日期格子
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDiv = document.createElement('div');
+    dayDiv.className = 'calendar-day';
+    
+    if (isCurrentMonth && d === today.getDate()) {
+      dayDiv.classList.add('today');
+    }
+    
+    const expense = dailyExpenses[d];
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    
+    dayDiv.innerHTML = `
+      <span class="day-number">${d}</span>
+      ${expense ? `<span class="day-expense">¥${expense.toFixed(0)}</span>` : ''}
+    `;
+    
+    if (expense) {
+      dayDiv.classList.add('has-expense');
+      dayDiv.addEventListener('click', () => showDayRecords(dateStr, expense));
+    }
+    
+    grid.appendChild(dayDiv);
+  }
+}
+
+function showDayRecords(dateStr, totalExpense) {
+  getAllRecords().then(records => {
+    const dayRecords = records.filter(r => r.date === dateStr);
+    
+    const date = new Date(dateStr);
+    const weekdayNames = ['日', '一', '二', '三', '四', '五', '六'];
+    const weekday = weekdayNames[date.getDay()];
+    
+    let recordsHtml = '';
+    if (dayRecords.length > 0) {
+      dayRecords.forEach(r => {
+        const color = CATEGORY_COLORS[r.category] || '#BDC3C7';
+        recordsHtml += `
+          <div class="record-item">
+            <div class="record-color" style="background:${color}"></div>
+            <div class="record-info">
+              <div class="record-main">
+                <span class="record-member">${escapeHtml(r.member)}</span>
+                <span class="record-category">${escapeHtml(r.category)}</span>
+              </div>
+              ${r.note ? `<div class="record-sub"><span>${escapeHtml(r.note)}</span></div>` : ''}
+            </div>
+            <div class="record-amount">¥${r.amount.toFixed(2)}</div>
+          </div>
+        `;
+      });
+    }
+    
+    showCustomModal({
+      title: `${dateStr} 周${weekday}`,
+      content: `
+        <div class="day-expense-total">当日支出：¥${totalExpense.toFixed(2)}</div>
+        <div class="day-records-list">${recordsHtml || '<div class="empty-state">当天暂无记录</div>'}</div>
+      `,
+      buttons: [{ text: '关闭', value: 'close', primary: true }]
+    });
+  });
+}
+
+// ========== 记录元素 ==========
 
 function createRecordElement(record) {
   const div = document.createElement('div');
@@ -239,6 +408,8 @@ function createRecordElement(record) {
 
   return div;
 }
+
+// ========== 添加/编辑记录 ==========
 
 function resetAddForm() {
   document.getElementById('amount-input').value = '';
@@ -294,17 +465,17 @@ function renderCategoryGrid() {
   }
 }
 
-function handleSave() {
+async function handleSave() {
   const amount = parseFloat(document.getElementById('amount-input').value);
   const date = document.getElementById('date-input').value;
   const note = document.getElementById('note-input').value.trim();
   
   if (!amount || amount <= 0) {
-    alert('请输入有效金额');
+    showToast('请输入有效金额');
     return;
   }
   if (!currentCategory) {
-    alert('请选择小类');
+    showToast('请选择小类');
     return;
   }
   
@@ -316,11 +487,17 @@ function handleSave() {
     note: note
   };
   
-  const action = editingId ? updateRecord(editingId, record) : addRecord(record);
-  action.then(() => {
+  try {
+    if (editingId) {
+      await updateRecord(editingId, record);
+    } else {
+      await addRecord(record);
+    }
     editingId = null;
     switchTab('home');
-  }).catch(err => alert('保存失败: ' + err.message));
+  } catch (err) {
+    showToast('保存失败: ' + err.message);
+  }
 }
 
 function editRecord(record) {
@@ -330,30 +507,42 @@ function editRecord(record) {
   
   switchTab('add');
   
-  // 更新成员选择
   const memberGrid = document.getElementById('member-grid');
   memberGrid.querySelectorAll('.member-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.member === currentMember);
   });
   
-  // 更新分类选择
   renderCategoryGrid();
   
-  // 填充表单
   document.getElementById('amount-input').value = record.amount;
   document.getElementById('date-input').value = record.date;
   document.getElementById('note-input').value = record.note || '';
 }
 
-function deleteRecordItem(id) {
-  if (!confirm('确定删除这条记录吗？')) return;
-  deleteRecord(id).then(() => {
+async function deleteRecordItem(id) {
+  const confirmed = await showCustomModal({
+    title: '删除记录',
+    content: '确定删除这条记录吗？',
+    buttons: [
+      { text: '取消', value: 'cancel' },
+      { text: '确定删除', value: 'confirm', primary: true }
+    ]
+  });
+  
+  if (confirmed !== 'confirm') return;
+  
+  try {
+    await deleteRecord(id);
     if (editingId === id) {
       editingId = null;
     }
     switchTab('home');
-  }).catch(err => alert('删除失败: ' + err.message));
+  } catch (err) {
+    showToast('删除失败: ' + err.message);
+  }
 }
+
+// ========== 记录列表 ==========
 
 function populateFilterOptions() {
   const filterMember = document.getElementById('filter-member');
@@ -384,7 +573,6 @@ function populateFilterOptions() {
     });
   }
   
-  // 更新分类选项
   const selectedMember = filterMember.value;
   filterCategory.innerHTML = '<option value="">全部</option>';
   if (selectedMember && CATEGORIES[selectedMember]) {
@@ -426,7 +614,6 @@ function renderAllRecords() {
       return;
     }
     
-    // 按月份分组
     const groups = {};
     filtered.forEach(r => {
       const month = r.date.substring(0, 7);
@@ -449,57 +636,213 @@ function renderAllRecords() {
   });
 }
 
+// ========== 统计页 ==========
+
 function renderStats() {
-  const container = document.getElementById('stats-content');
-  if (!container) return;
-  
-  const activeTab = document.querySelector('.stats-tab.active');
-  const type = activeTab ? activeTab.dataset.type : 'member';
+  const display = document.getElementById('stats-date-display');
+  if (statsPeriod === 'month') {
+    display.textContent = `${statsDate.getFullYear()}年${statsDate.getMonth() + 1}月`;
+  } else {
+    display.textContent = `${statsDate.getFullYear()}年`;
+  }
   
   getAllRecords().then(records => {
+    const filtered = filterRecordsByPeriod(records);
+    
     const byMember = {};
     const byCategory = {};
     
-    records.forEach(r => {
+    filtered.forEach(r => {
       if (!byMember[r.member]) byMember[r.member] = 0;
       byMember[r.member] += r.amount;
       if (!byCategory[r.category]) byCategory[r.category] = 0;
       byCategory[r.category] += r.amount;
     });
     
-    const total = records.reduce((s, r) => s + r.amount, 0);
+    const total = filtered.reduce((s, r) => s + r.amount, 0);
     
-    let html = `<div class="stats-total">总支出: <span>¥${total.toFixed(2)}</span></div>`;
+    document.getElementById('chart-center-value').textContent = '¥' + total.toFixed(2);
+    document.getElementById('chart-center-label').textContent = 
+      statsPeriod === 'month' ? '本月支出' : '本年支出';
     
-    if (type === 'member') {
-      html += '<div class="stats-section"><h3>按大类</h3>';
-      Object.keys(byMember).sort().forEach(m => {
-        const pct = total > 0 ? ((byMember[m] / total) * 100).toFixed(1) : 0;
-        html += `<div class="stats-bar"><div class="stats-bar-label">${m}: ¥${byMember[m].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:var(--primary-color)"></div></div></div>`;
-      });
-      html += '</div>';
-    } else {
-      html += '<div class="stats-section"><h3>按小类</h3>';
-      Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).forEach(c => {
-        const pct = total > 0 ? ((byCategory[c] / total) * 100).toFixed(1) : 0;
-        const color = CATEGORY_COLORS[c] || '#BDC3C7';
-        html += `<div class="stats-bar"><div class="stats-bar-label"><span class="color-dot" style="background:${color}"></span>${c}: ¥${byCategory[c].toFixed(2)} (${pct}%)</div><div class="stats-bar-bg"><div class="stats-bar-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
-      });
-      html += '</div>';
-    }
+    const data = statsType === 'member' ? byMember : byCategory;
+    const colorMap = statsType === 'member' ? CATEGORY_COLORS : CATEGORY_COLORS;
     
-    container.innerHTML = html;
+    drawPieChart(data, colorMap);
+    renderCategoryList(data, total, filtered);
   });
 }
 
+function filterRecordsByPeriod(records) {
+  const year = statsDate.getFullYear();
+  const month = statsDate.getMonth();
+  
+  return records.filter(r => {
+    const date = new Date(r.date);
+    if (statsPeriod === 'year') {
+      return date.getFullYear() === year;
+    } else {
+      return date.getFullYear() === year && date.getMonth() === month;
+    }
+  });
+}
+
+function drawPieChart(data, colorMap) {
+  const canvas = document.getElementById('pie-chart');
+  const ctx = canvas.getContext('2d');
+  const centerX = 140, centerY = 140;
+  const radius = 110;
+  const innerRadius = 60;
+  
+  ctx.clearRect(0, 0, 280, 280);
+  
+  const entries = Object.entries(data);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  
+  if (total === 0) {
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2, true);
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fill();
+    return;
+  }
+  
+  let startAngle = -Math.PI / 2;
+  
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9', '#F8B500', '#FF69B4', '#00CED1', '#9370DB', '#BDC3C7'];
+  
+  entries.forEach(([key, value], idx) => {
+    const sliceAngle = (value / total) * Math.PI * 2;
+    const endAngle = startAngle + sliceAngle;
+    
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+    ctx.arc(centerX, centerY, innerRadius, endAngle, startAngle, true);
+    ctx.closePath();
+    
+    const color = colorMap[key] || colors[idx % colors.length];
+    ctx.fillStyle = color;
+    ctx.fill();
+    
+    startAngle = endAngle;
+  });
+}
+
+function renderCategoryList(data, total, allRecords) {
+  const container = document.getElementById('stats-categories');
+  const detail = document.getElementById('stats-detail');
+  
+  detail.innerHTML = '';
+  
+  const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  
+  container.innerHTML = entries.map(([key, value], idx) => {
+    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+    const color = CATEGORY_COLORS[key] || ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'][idx % 5];
+    
+    return `
+      <div class="stats-category-item" data-key="${escapeHtml(key)}" data-pct="${pct}">
+        <div class="stats-category-info">
+          <div class="stats-category-name">
+            <span class="color-dot" style="background:${color}"></span>
+            ${escapeHtml(key)}
+          </div>
+          <div class="stats-category-amount">¥${value.toFixed(2)}</div>
+        </div>
+        <div class="stats-category-bar">
+          <div class="stats-category-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <div class="stats-category-stats">
+          <span>${pct}%</span>
+          <span class="stats-count">${getCountForCategory(allRecords, key, statsType)}笔</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  container.querySelectorAll('.stats-category-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const key = item.dataset.key;
+      showCategoryDetail(key, allRecords);
+    });
+  });
+}
+
+function getCountForCategory(records, key, type) {
+  if (type === 'member') {
+    return records.filter(r => r.member === key).length;
+  } else {
+    return records.filter(r => r.category === key).length;
+  }
+}
+
+function showCategoryDetail(key, allRecords) {
+  const detail = document.getElementById('stats-detail');
+  
+  const detailRecords = allRecords.filter(r => {
+    return statsType === 'member' ? r.member === key : r.category === key;
+  });
+  
+  const total = detailRecords.reduce((s, r) => s + r.amount, 0);
+  const pct = allRecords.reduce((s, r) => s + r.amount, 0) > 0 
+    ? ((total / allRecords.reduce((s, r) => s + r.amount, 0)) * 100).toFixed(1) 
+    : '0.0';
+  
+  detailRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  let recordsHtml = detailRecords.map(r => {
+    const color = CATEGORY_COLORS[r.category] || '#BDC3C7';
+    return `
+      <div class="record-item">
+        <div class="record-color" style="background:${color}"></div>
+        <div class="record-info">
+          <div class="record-main">
+            <span class="record-member">${escapeHtml(r.member)}</span>
+            <span class="record-category">${escapeHtml(r.category)}</span>
+          </div>
+          <div class="record-sub">
+            <span>${r.date}</span>
+            ${r.note ? `<span class="record-note">${escapeHtml(r.note)}</span>` : ''}
+          </div>
+        </div>
+        <div class="record-amount">¥${r.amount.toFixed(2)}</div>
+      </div>
+    `;
+  }).join('');
+  
+  detail.innerHTML = `
+    <div class="stats-detail-header">
+      <h4>${escapeHtml(key)} 明细</h4>
+      <div class="stats-detail-summary">
+        <span>共${detailRecords.length}笔</span>
+        <span>总计：¥${total.toFixed(2)}</span>
+        <span>${pct}%</span>
+      </div>
+      <button class="stats-detail-close" id="detail-close">收起</button>
+    </div>
+    <div class="stats-detail-records">${recordsHtml}</div>
+  `;
+  
+  detail.style.display = 'block';
+  detail.scrollIntoView({ behavior: 'smooth' });
+  
+  document.getElementById('detail-close').addEventListener('click', () => {
+    detail.style.display = 'none';
+  });
+}
+
+// ========== 设置页 ==========
+
 function setupSettingsPage() {
-  // 绑定管理分类按钮
   const manageBtn = document.getElementById('manage-categories');
   if (manageBtn && !manageBtn.dataset.bound) {
     manageBtn.addEventListener('click', openCategoryManager);
     manageBtn.dataset.bound = 'true';
   }
 }
+
+// ========== 分类管理 ==========
 
 function openCategoryManager() {
   const overlay = document.createElement('div');
@@ -542,7 +885,7 @@ function openCategoryManager() {
     const name = input.value.trim();
     if (!name) return;
     if (CATEGORIES[name]) {
-      alert('该大类已存在');
+      showToast('该大类已存在');
       return;
     }
     CATEGORIES[name] = ['其他'];
@@ -556,8 +899,9 @@ function openCategoryManager() {
 function renderMemberList(overlay) {
   const list = overlay.querySelector('#member-list');
   const members = Object.keys(CATEGORIES);
-  list.innerHTML = members.map(m => `
-    <div class="category-item">
+  list.innerHTML = members.map((m, idx) => `
+    <div class="category-item" draggable="true" data-member="${escapeHtml(m)}" data-idx="${idx}">
+      <span class="drag-handle">≡</span>
       <span class="category-name">${escapeHtml(m)}</span>
       <div class="category-item-actions">
         <button class="btn-icon" data-action="edit-member" data-name="${escapeHtml(m)}">✏️</button>
@@ -567,14 +911,14 @@ function renderMemberList(overlay) {
   `).join('');
 
   list.querySelectorAll('.btn-icon').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const action = btn.dataset.action;
       const name = btn.dataset.name;
       if (action === 'edit-member') {
         const newName = prompt('编辑大类名称：', name);
         if (newName && newName !== name) {
           if (CATEGORIES[newName]) {
-            alert('该名称已存在');
+            showToast('该名称已存在');
             return;
           }
           const oldData = CATEGORIES[name];
@@ -586,14 +930,95 @@ function renderMemberList(overlay) {
         }
       } else if (action === 'delete-member') {
         if (Object.keys(CATEGORIES).length <= 1) {
-          alert('至少保留一个大类');
+          showToast('至少保留一个大类');
           return;
         }
-        if (!confirm(`确定删除大类"${name}"及其所有小类吗？`)) return;
+        const confirmed = await showCustomModal({
+          title: '删除大类',
+          content: `确定删除大类"${name}"及其所有小类吗？`,
+          buttons: [
+            { text: '取消', value: 'cancel' },
+            { text: '确定删除', value: 'confirm', primary: true }
+          ]
+        });
+        if (confirmed !== 'confirm') return;
         delete CATEGORIES[name];
         saveCategories();
         renderMemberList(overlay);
         renderMemberTabs(overlay);
+      }
+    });
+  });
+
+  // 拖拽排序
+  setupDragSort(list, 'member');
+}
+
+function setupDragSort(container, type) {
+  let dragSrcIdx = null;
+  
+  container.querySelectorAll('.category-item').forEach(item => {
+    item.addEventListener('dragstart', (e) => {
+      dragSrcIdx = parseInt(item.dataset.idx);
+      item.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    
+    item.addEventListener('dragend', () => {
+      item.style.opacity = '1';
+    });
+    
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      
+      container.querySelectorAll('.category-item').forEach(i => i.classList.remove('drag-before', 'drag-after'));
+      if (e.clientY < midY) {
+        item.classList.add('drag-before');
+      } else {
+        item.classList.add('drag-after');
+      }
+    });
+    
+    item.addEventListener('dragleave', () => {
+      item.classList.remove('drag-before', 'drag-after');
+    });
+    
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const targetIdx = parseInt(item.dataset.idx);
+      const insertBefore = item.classList.contains('drag-before');
+      
+      if (dragSrcIdx === targetIdx) return;
+      
+      if (type === 'member') {
+        const members = Object.keys(CATEGORIES);
+        const movedItem = members[dragSrcIdx];
+        members.splice(dragSrcIdx, 1);
+        
+        const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+        members.splice(insertIdx, 0, movedItem);
+        
+        const newCategories = {};
+        members.forEach(m => {
+          newCategories[m] = CATEGORIES[m];
+        });
+        CATEGORIES = newCategories;
+        saveCategories();
+        renderMemberList(container.closest('.modal'));
+        renderMemberTabs(container.closest('.modal'));
+      } else {
+        const memberName = container.dataset.member;
+        const subcategories = CATEGORIES[memberName];
+        const movedItem = subcategories[dragSrcIdx];
+        subcategories.splice(dragSrcIdx, 1);
+        
+        const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+        subcategories.splice(insertIdx, 0, movedItem);
+        
+        saveCategories();
+        renderMemberTabs(container.closest('.modal'));
       }
     });
   });
@@ -628,9 +1053,10 @@ function renderSubcategoryEditor(overlay, memberName) {
   
   editor.innerHTML = `
     <div class="current-member-name">当前大类：<strong>${escapeHtml(memberName)}</strong></div>
-    <div class="subcategory-list">
+    <div class="subcategory-list" id="sub-list" data-member="${escapeHtml(memberName)}">
       ${subcategories.map((sub, idx) => `
-        <div class="subcategory-item">
+        <div class="subcategory-item" draggable="true" data-idx="${idx}">
+          <span class="drag-handle">≡</span>
           <span class="subcategory-color" style="background:${CATEGORY_COLORS[sub] || '#BDC3C7'}"></span>
           <span class="subcategory-name">${escapeHtml(sub)}</span>
           <div class="subcategory-actions">
@@ -647,8 +1073,10 @@ function renderSubcategoryEditor(overlay, memberName) {
     </div>
   `;
 
+  const subList = editor.querySelector('#sub-list');
+  
   editor.querySelectorAll('.btn-icon').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const action = btn.dataset.action;
       const member = btn.dataset.member;
       const idx = parseInt(btn.dataset.idx);
@@ -670,7 +1098,15 @@ function renderSubcategoryEditor(overlay, memberName) {
         showColorPicker(overlay, member, idx, currentColor);
       } else if (action === 'delete-sub') {
         const subName = CATEGORIES[member][idx];
-        if (!confirm(`确定删除小类"${subName}"吗？`)) return;
+        const confirmed = await showCustomModal({
+          title: '删除小类',
+          content: `确定删除小类"${subName}"吗？`,
+          buttons: [
+            { text: '取消', value: 'cancel' },
+            { text: '确定删除', value: 'confirm', primary: true }
+          ]
+        });
+        if (confirmed !== 'confirm') return;
         CATEGORIES[member].splice(idx, 1);
         if (CATEGORIES[member].length === 0) {
           CATEGORIES[member].push('其他');
@@ -686,7 +1122,7 @@ function renderSubcategoryEditor(overlay, memberName) {
     const name = input.value.trim();
     if (!name) return;
     if (CATEGORIES[memberName].includes(name)) {
-      alert('该小类已存在');
+      showToast('该小类已存在');
       return;
     }
     CATEGORIES[memberName].push(name);
@@ -697,6 +1133,11 @@ function renderSubcategoryEditor(overlay, memberName) {
     input.value = '';
     renderSubcategoryEditor(overlay, memberName);
   });
+
+  // 小类拖拽排序
+  if (subList) {
+    setupDragSort(subList, 'sub');
+  }
 }
 
 function showColorPicker(overlay, memberName, idx, currentColor) {
@@ -731,7 +1172,34 @@ function showColorPicker(overlay, memberName, idx, currentColor) {
   picker.querySelector('#cancel-color').addEventListener('click', () => picker.remove());
 }
 
-function handleExport() {
+// ========== 导出 ==========
+
+async function handleExport() {
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const defaultName = `账单_${dateStr}_${timeStr}.json`;
+  
+  const result = await showCustomModal({
+    title: '导出文件',
+    content: `
+      <div class="export-dialog">
+        <label>文件名：</label>
+        <input type="text" id="export-filename" value="${defaultName}" class="export-input">
+        <div class="export-info">将导出：记账记录 + 分类配置</div>
+      </div>
+    `,
+    buttons: [
+      { text: '取消', value: 'cancel' },
+      { text: '确定导出', value: 'confirm', primary: true }
+    ]
+  });
+  
+  if (result !== 'confirm') return;
+  
+  const filenameInput = document.querySelector('#export-filename');
+  const filename = filenameInput ? filenameInput.value.trim() : defaultName;
+  
   getAllRecords().then(records => {
     const exportData = {
       version: '2.0',
@@ -745,19 +1213,54 @@ function handleExport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `家庭记账完整备份_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = filename.endsWith('.json') ? filename : filename + '.json';
     a.click();
     URL.revokeObjectURL(url);
-    alert('导出成功！\n已导出：\n• 记账记录 ' + records.length + ' 条\n• 大类小类配置');
+    
+    showToast('保存成功！');
   });
 }
 
-function handleImport(e) {
+function exportExcel() {
+  getAllRecords().then(records => {
+    if (records.length === 0) {
+      showToast('暂无记录可导出');
+      return;
+    }
+    
+    // 构建CSV内容（Excel兼容）
+    let csv = '\uFEFF'; // BOM for Excel中文支持
+    csv += '日期,大类,小类,金额,备注\n';
+    
+    records.forEach(r => {
+      const note = r.note ? `"${r.note.replace(/"/g, '""')}"` : '';
+      csv += `${r.date},${r.member},${r.category},${r.amount.toFixed(2)},${note}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const now = new Date();
+    const filename = `账单_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}.csv`;
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    showToast('Excel导出成功！');
+  });
+}
+
+// ========== 导入 ==========
+
+async function handleImport(e) {
   const file = e.target.files[0];
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (evt) => {
+  reader.onload = async (evt) => {
     try {
       const data = JSON.parse(evt.target.result);
       
@@ -773,14 +1276,25 @@ function handleImport(e) {
         throw new Error('文件格式错误');
       }
       
-      let confirmMsg = `将导入 ${records.length} 条记账记录`;
+      let message = `<strong>导入记账记录和分类配置？</strong>`;
+      message += `<div class="import-details">`;
+      message += `<div>将导入：${records.length} 条记账记录</div>`;
       if (hasSettings && data.categories) {
         const memberCount = Object.keys(data.categories).length;
-        confirmMsg += `\n同时导入 ${memberCount} 个大类及其小类配置`;
+        message += `<div>分类配置：${memberCount} 个大类及其小类</div>`;
       }
-      confirmMsg += '\n\n是否继续？';
+      message += `</div>`;
       
-      if (!confirm(confirmMsg)) return;
+      const confirmed = await showCustomModal({
+        title: '导入确认',
+        content: message,
+        buttons: [
+          { text: '取消', value: 'cancel' },
+          { text: '确定', value: 'confirm', primary: true }
+        ]
+      });
+      
+      if (confirmed !== 'confirm') return;
       
       if (hasSettings && data.categories) {
         CATEGORIES = data.categories;
@@ -789,26 +1303,39 @@ function handleImport(e) {
         renderMemberGrid();
       }
       
-      bulkAddRecords(records).then(() => {
-        alert('导入成功！');
-        e.target.value = '';
-        switchTab('home');
-      }).catch(err => alert('导入失败: ' + err.message));
+      await bulkAddRecords(records);
+      e.target.value = '';
+      switchTab('home');
+      showToast('导入成功！');
     } catch (err) {
-      alert('文件解析失败: ' + err.message);
+      showToast('文件解析失败: ' + err.message);
     }
   };
   reader.readAsText(file);
 }
 
-function clearAllData() {
-  if (!confirm('确定清空所有数据吗？此操作不可恢复！')) return;
-  if (!confirm('再次确认：所有记账记录将被永久删除！')) return;
-  clearAllRecords().then(() => {
-    alert('已清空所有数据');
-    switchTab('home');
+async function clearAllData() {
+  const confirmed = await showCustomModal({
+    title: '清空数据',
+    content: '<strong style="color:#f44336">确定清空所有数据吗？此操作不可恢复！</strong>',
+    buttons: [
+      { text: '取消', value: 'cancel' },
+      { text: '确定清空', value: 'confirm', primary: true }
+    ]
   });
+  
+  if (confirmed !== 'confirm') return;
+  
+  try {
+    await clearAllRecords();
+    showToast('已清空所有数据');
+    switchTab('home');
+  } catch (err) {
+    showToast('清空失败: ' + err.message);
+  }
 }
+
+// ========== 工具函数 ==========
 
 function formatDate(dateStr) {
   const date = new Date(dateStr);
@@ -826,9 +1353,11 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// 导出函数供HTML onclick使用
+// ========== 导出全局函数 ==========
+
 window.openCategoryManager = openCategoryManager;
 window.exportData = handleExport;
+window.exportExcel = exportExcel;
 window.handleImport = handleImport;
 window.triggerImport = function() {
   document.getElementById('import-input').click();

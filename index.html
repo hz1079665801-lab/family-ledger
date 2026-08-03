@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon-192.png">
-  <title>家庭记账本</title>
+  <title>青囊录</title>
   <link rel="stylesheet" href="style.css">
   <script>
     // Edge浏览器缩放修复 - 在页面加载前检测
@@ -33,8 +33,8 @@
 </head>
 <body>
   <header class="app-header">
-    <h1>家庭记账本</h1>
-    <p class="subtitle">记录每一笔开销</p>
+    <h1>青囊录</h1>
+    <p class="subtitle">知钱财来去 明取舍得失</p>
   </header>
 
   <main class="app-main" id="app-main">
@@ -52,15 +52,17 @@
         </div>
       </div>
 
-      <div class="quick-actions">
-        <button class="quick-btn" onclick="switchTab('add')">
-          <span class="quick-icon">+</span>
-          <span>快速记账</span>
-        </button>
-        <button class="quick-btn" onclick="switchTab('stats')">
-          <span class="quick-icon">📊</span>
-          <span>统计报表</span>
-        </button>
+      <!-- 日历组件 -->
+      <div class="calendar-card">
+        <div class="calendar-header">
+          <button class="calendar-nav" id="prev-month">‹</button>
+          <span class="calendar-title" id="calendar-title"></span>
+          <button class="calendar-nav" id="next-month">›</button>
+        </div>
+        <div class="calendar-weekdays">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
       </div>
 
       <div class="records-section">
@@ -123,11 +125,39 @@
 
     <!-- 统计页 -->
     <div class="page" id="stats-page">
-      <div class="stats-tabs">
-        <button class="stats-tab active" data-type="member">按大类</button>
-        <button class="stats-tab" data-type="category">按小类</button>
+      <!-- 时间选择 -->
+      <div class="stats-date-selector">
+        <div class="date-toggle">
+          <button class="date-btn active" data-period="month">月</button>
+          <button class="date-btn" data-period="year">年</button>
+        </div>
+        <div class="date-navigation">
+          <button class="date-nav-btn" id="stats-prev">‹</button>
+          <span class="date-display" id="stats-date-display"></span>
+          <button class="date-nav-btn" id="stats-next">›</button>
+        </div>
       </div>
-      <div class="stats-content" id="stats-content"></div>
+      
+      <!-- 分类维度选择 -->
+      <div class="stats-tabs">
+        <button class="stats-tab active" data-type="member">大类</button>
+        <button class="stats-tab" data-type="category">小类</button>
+      </div>
+      
+      <!-- 环状图 -->
+      <div class="chart-container">
+        <canvas id="pie-chart" width="280" height="280"></canvas>
+        <div class="chart-center-info">
+          <div class="chart-center-label" id="chart-center-label">总支出</div>
+          <div class="chart-center-value" id="chart-center-value">¥0.00</div>
+        </div>
+      </div>
+      
+      <!-- 分类明细列表 -->
+      <div class="stats-categories" id="stats-categories"></div>
+      
+      <!-- 展开的明细 -->
+      <div class="stats-detail" id="stats-detail"></div>
     </div>
 
     <!-- 设置页 -->
@@ -147,10 +177,17 @@
         <h3>数据管理</h3>
         <div class="settings-item" onclick="exportData()">
           <div class="settings-info">
-            <span class="settings-title">导出</span>
+            <span class="settings-title">导出JSON备份</span>
             <span class="settings-desc">导出记账记录和大类小类配置</span>
           </div>
           <button class="btn-action">导出</button>
+        </div>
+        <div class="settings-item" onclick="exportExcel()">
+          <div class="settings-info">
+            <span class="settings-title">导出Excel</span>
+            <span class="settings-desc">导出账单为Excel表格格式</span>
+          </div>
+          <button class="btn-action">导出Excel</button>
         </div>
         <div class="settings-item" onclick="triggerImport()">
           <div class="settings-info">
@@ -173,8 +210,8 @@
         <h3>关于</h3>
         <div class="settings-item">
           <div class="settings-info">
-            <span class="settings-title">家庭记账本 v2.1</span>
-            <span class="settings-desc">家庭成员记账 · 数据存本地 · 数据可迁移</span>
+            <span class="settings-title">青囊录 v3.0</span>
+            <span class="settings-desc">知钱财来去，明取舍得失</span>
           </div>
         </div>
       </div>
