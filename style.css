@@ -1367,8 +1367,9 @@ input, select, button, textarea {
 }
 
 .calendar-day.today {
-  background: var(--primary-color);
-  color: white;
+  background: #e8f5e9;
+  border: 2px solid var(--primary-color);
+  color: #333;
 }
 
 .calendar-day.has-expense {
@@ -1387,6 +1388,7 @@ input, select, button, textarea {
 
 .calendar-day.today .day-number {
   font-weight: 700;
+  color: #333;
 }
 
 .day-expense {
@@ -1396,7 +1398,7 @@ input, select, button, textarea {
 }
 
 .calendar-day.today .day-expense {
-  color: rgba(255,255,255,0.9);
+  color: var(--primary-color);
 }
 
 /* 当日记录弹窗 */
