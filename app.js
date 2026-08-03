@@ -1339,11 +1339,12 @@ async function handleExport() {
           <input type="text" id="export-filename" value="${defaultName}" 
             style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem;outline:none;">
         </div>
+        <div style="color:#999;font-size:0.8rem;">点击确定后，请在浏览器下载窗口确认保存</div>
       </div>
     `,
     buttons: [
       { text: '取消', value: 'cancel' },
-      { text: '确定导出', value: 'confirm', primary: true }
+      { text: '确定', value: 'confirm', primary: true }
     ]
   });
   
@@ -1365,7 +1366,6 @@ async function handleExport() {
     const dataStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     
-    // 创建下载链接并触发
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1374,13 +1374,10 @@ async function handleExport() {
     document.body.appendChild(a);
     a.click();
     
-    // 延迟清理
     setTimeout(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
-    
-    showToast('导出成功！');
   } catch (err) {
     showToast('导出失败: ' + err.message);
   }
@@ -1411,10 +1408,14 @@ function exportExcel() {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
     
-    showToast('Excel导出成功！');
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
   });
 }
 
